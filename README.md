@@ -158,3 +158,4 @@ This is a v0-generated project. Feel free to customize and extend it for your ne
 
 MIT
 # mazirapp-client
+# mazirapp-client

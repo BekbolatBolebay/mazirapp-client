@@ -1,0 +1,66 @@
+import { Header } from '@/components/layout/header'
+import { BottomNav } from '@/components/layout/bottom-nav'
+import { SearchBar } from '@/components/home/search-bar'
+import { PromotionBanner } from '@/components/home/promotion-banner'
+import { CategoryGrid } from '@/components/home/category-grid'
+import { RestaurantSection } from '@/components/home/restaurant-section'
+import { FoodSection } from '@/components/home/food-section'
+import { createClient } from '@/lib/supabase/server'
+
+export default async function HomePage() {
+  const supabase = await createClient()
+
+  const [
+    { data: promotions },
+    { data: restaurants },
+    { data: popularItems },
+  ] = await Promise.all([
+    supabase
+      .from('promotions')
+      .select('*')
+      .eq('is_active', true)
+      .gte('end_date', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(3),
+    supabase
+      .from('restaurants')
+      .select('*')
+      .eq('is_open', true)
+      .order('rating', { ascending: false })
+      .limit(10),
+    supabase
+      .from('menu_items')
+      .select('*, restaurants(*)')
+      .eq('is_available', true)
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ])
+
+  return (
+    <div className="flex flex-col min-h-screen pb-16">
+      <Header />
+      
+      <main className="flex-1 overflow-auto">
+        <div className="max-w-screen-xl mx-auto px-4 py-4 space-y-6">
+          <SearchBar />
+          
+          {promotions && promotions.length > 0 && (
+            <PromotionBanner promotions={promotions} />
+          )}
+
+          <CategoryGrid />
+
+          {restaurants && restaurants.length > 0 && (
+            <RestaurantSection restaurants={restaurants} />
+          )}
+
+          {popularItems && popularItems.length > 0 && (
+            <FoodSection title="Бүгінгі танымалдар" items={popularItems} />
+          )}
+        </div>
+      </main>
+
+      <BottomNav />
+    </div>
+  )
+}

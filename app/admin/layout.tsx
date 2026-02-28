@@ -24,10 +24,10 @@ const navItems = [
     { label: 'Categories', icon: ListFilter, href: '/admin/categories' },
     { label: 'Menu Items', icon: MenuIcon, href: '/admin/menu' },
     { label: 'Orders', icon: ShoppingBag, href: '/admin/orders' },
-    { label: 'Banners', icon: Tag, href: '/admin/promotions' },
+    { label: 'Promotions', icon: Tag, href: '/admin/promotions' },
     { label: 'Reviews', icon: Star, href: '/admin/reviews' },
     { label: 'Settings', icon: Settings, href: '/admin/settings' },
-    { label: 'Users', icon: Users, href: '/admin/users' },
+    { label: 'Clients', icon: Users, href: '/admin/users' },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

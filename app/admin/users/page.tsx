@@ -1,16 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Search, UserCog, Shield, Trash2, Mail } from 'lucide-react'
+import { Search, UserCog, Shield, Trash2, Mail, Download, Upload, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
 
 export default function AdminUsers() {
     const [users, setUsers] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+    const [importing, setImporting] = useState(false)
+    const [isImportOpen, setIsImportOpen] = useState(false)
 
     useEffect(() => {
         fetchUsers()
@@ -48,12 +59,99 @@ export default function AdminUsers() {
         }
     }
 
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setImporting(true)
+        try {
+            const reader = new FileReader()
+            reader.onload = async (event) => {
+                try {
+                    const content = event.target?.result as string
+                    const clients = JSON.parse(content)
+
+                    const res = await fetch('/api/admin/users/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ clients })
+                    })
+
+                    const data = await res.json()
+                    if (data.success) {
+                        toast.success(`Successfully imported ${data.count} clients`)
+                        setIsImportOpen(false)
+                        fetchUsers()
+                    } else {
+                        toast.error(data.error || 'Failed to import clients')
+                    }
+                } catch (err) {
+                    toast.error('Invalid JSON file format')
+                } finally {
+                    setImporting(false)
+                }
+            }
+            reader.readAsText(file)
+        } catch (err) {
+            toast.error('Failed to read file')
+            setImporting(false)
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="relative w-full max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search users by name or email..." className="pl-9" />
+                    <Input placeholder="Search clients by name, email or phone..." className="pl-9" />
+                </div>
+                <div className="flex items-center gap-2">
+                    <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="flex items-center gap-2">
+                                <Upload className="h-4 w-4" />
+                                Import Clients
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Import Clients from Version 1</DialogTitle>
+                                <DialogDescription>
+                                    Upload a JSON file containing client data. The file should be an array of objects with email, name, and phone fields.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium">Select JSON File</label>
+                                    <Input
+                                        type="file"
+                                        accept=".json"
+                                        onChange={handleImport}
+                                        disabled={importing}
+                                    />
+                                </div>
+                                <div className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
+                                    <p className="font-semibold mb-1">Example format:</p>
+                                    <pre className="overflow-x-auto">
+                                        {`[
+  {
+    "email": "client@example.com",
+    "full_name": "John Doe",
+    "phone": "+77012345678"
+  }
+]`}
+                                    </pre>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setIsImportOpen(false)}>Cancel</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Button className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Add Client
+                    </Button>
                 </div>
             </div>
 
@@ -61,7 +159,8 @@ export default function AdminUsers() {
                 <table className="w-full text-sm text-left">
                     <thead className="bg-muted/50 border-b font-medium text-muted-foreground">
                         <tr>
-                            <th className="px-6 py-3">User</th>
+                            <th className="px-6 py-3">Client</th>
+                            <th className="px-6 py-3">Contact</th>
                             <th className="px-6 py-3">Role</th>
                             <th className="px-6 py-3">Joined Date</th>
                             <th className="px-6 py-3 text-right">Actions</th>
@@ -96,6 +195,9 @@ export default function AdminUsers() {
                                                 </div>
                                             </div>
                                         </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-muted-foreground">
+                                        {user.phone || 'No phone'}
                                     </td>
                                     <td className="px-6 py-4">
                                         <Badge variant={user.role === 'admin' ? 'default' : 'secondary'} className={user.role === 'admin' ? "bg-primary/10 text-primary border-none" : ""}>

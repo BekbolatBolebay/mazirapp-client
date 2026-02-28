@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient()
   let query = supabase
     .from('menu_items')
-    .select('*, restaurants(name_en, name_ru)')
+    .select('*, restaurants(name_en, name_ru), categories(name_kk, name_ru, name_en)')
     .order('created_at', { ascending: false })
 
   if (restaurantId) {
@@ -46,13 +46,15 @@ export async function POST(req: NextRequest) {
       .from('menu_items')
       .insert({
         restaurant_id: body.restaurant_id,
-        name_en: body.name_en,
+        category_id: body.category_id || body.category, // Fallback if still sending string
+        name_kk: body.name_kk || body.name_en,
         name_ru: body.name_ru,
-        description_en: body.description_en,
+        name_en: body.name_en,
+        description_kk: body.description_kk || body.description_en,
         description_ru: body.description_ru,
+        description_en: body.description_en,
         price: body.price,
         image_url: body.image_url,
-        category: body.category,
         is_available: body.is_available ?? true,
         is_popular: body.is_popular ?? false,
       })

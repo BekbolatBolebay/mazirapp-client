@@ -29,17 +29,17 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
     .select('*')
     .eq('restaurant_id', id)
     .eq('is_available', true)
-    .order('category', { ascending: true })
+    .order('created_at', { ascending: true })
 
-  const categories = [...new Set(menuItems?.map((item) => item.category) || [])]
+  const categories = [...new Set(menuItems?.map((item) => item.name_ru) || [])]
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
       <div className="relative h-48 bg-muted">
-        {restaurant.cover_image_url && (
+        {restaurant.banner_url && (
           <Image
-            src={restaurant.cover_image_url}
-            alt={restaurant.name}
+            src={restaurant.banner_url}
+            alt={restaurant.name_ru || restaurant.name_en}
             fill
             className="object-cover"
           />
@@ -74,15 +74,15 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
         <div className="max-w-screen-xl mx-auto px-4 py-4">
           <div className="mb-4">
             <div className="flex items-start justify-between mb-2">
-              <h1 className="text-2xl font-bold">{restaurant.name}</h1>
+              <h1 className="text-2xl font-bold">{restaurant.name_ru || restaurant.name_en}</h1>
               <div className="flex items-center gap-1 ml-2">
                 <Star className="w-5 h-5 fill-accent text-accent" />
                 <span className="text-lg font-bold">{restaurant.rating.toFixed(1)}</span>
               </div>
             </div>
 
-            {restaurant.description && (
-              <p className="text-muted-foreground mb-3">{restaurant.description}</p>
+            {(restaurant.description_ru || restaurant.description_en) && (
+              <p className="text-muted-foreground mb-3">{restaurant.description_ru || restaurant.description_en}</p>
             )}
 
             <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
@@ -120,9 +120,9 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
             )}
           </div>
 
-          {restaurant.categories && restaurant.categories.length > 0 && (
+          {restaurant.cuisine_types && restaurant.cuisine_types.length > 0 && (
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-              {restaurant.categories.map((category, index) => (
+              {restaurant.cuisine_types.map((category: string, index: number) => (
                 <Badge key={index} variant="secondary">
                   {category}
                 </Badge>
@@ -154,7 +154,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
               <TabsContent key={category} value={category} className="mt-4">
                 <div className="grid grid-cols-2 gap-3">
                   {menuItems
-                    ?.filter((item) => item.category === category)
+                    ?.filter((item) => item.name_ru === category)
                     .map((item) => (
                       <MenuItemCard key={item.id} item={item} />
                     ))}

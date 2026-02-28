@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { id, status, estimated_delivery } = body
+    const { id, status, estimated_delivery_time } = body
 
     if (!id || !status) {
       return createAdminError('Order ID and status are required', 400)
@@ -77,8 +77,8 @@ export async function PUT(req: NextRequest) {
       updates.delivered_at = new Date().toISOString()
     }
 
-    if (estimated_delivery) {
-      updates.estimated_delivery = estimated_delivery
+    if (estimated_delivery_time) {
+      updates.estimated_delivery_time = estimated_delivery_time
     }
 
     const { data, error } = await supabase

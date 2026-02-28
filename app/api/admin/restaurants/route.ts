@@ -36,20 +36,24 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from('restaurants')
       .insert({
-        name_en: body.name_en,
+        name_kk: body.name_kk || body.name_en,
         name_ru: body.name_ru,
-        description_en: body.description_en,
+        name_en: body.name_en,
+        description_kk: body.description_kk || body.description_en,
         description_ru: body.description_ru,
+        description_en: body.description_en,
         address: body.address,
         phone: body.phone,
         image_url: body.image_url,
+        banner_url: body.banner_url || body.image_url,
         rating: body.rating || 0,
-        delivery_time: body.delivery_time,
+        delivery_time_min: body.delivery_time_min || 20,
+        delivery_time_max: body.delivery_time_max || 40,
         delivery_fee: body.delivery_fee || 0,
-        min_order: body.min_order || 0,
+        minimum_order: body.minimum_order || 0,
         is_open: body.is_open ?? true,
         opening_hours: body.opening_hours,
-        categories: body.categories || [],
+        cuisine_types: body.cuisine_types || body.categories || [],
       })
       .select()
       .single()

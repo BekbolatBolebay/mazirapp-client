@@ -16,7 +16,7 @@ export default async function RestaurantsPage() {
   const { data: cafeRestaurants } = await supabase
     .from('restaurants')
     .select('*')
-    .contains('categories', ['Кафе'])
+    .contains('cuisine_types', ['Кафе'])
     .order('rating', { ascending: false })
 
   return (

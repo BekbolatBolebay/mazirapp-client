@@ -17,6 +17,8 @@ export type Database = {
           phone: string | null
           avatar_url: string | null
           preferred_language: string
+          theme: string
+          role: 'user' | 'admin'
           created_at: string
           updated_at: string
         }
@@ -27,6 +29,8 @@ export type Database = {
           phone?: string | null
           avatar_url?: string | null
           preferred_language?: string
+          theme?: string
+          role?: 'user' | 'admin'
           created_at?: string
           updated_at?: string
         }
@@ -37,6 +41,8 @@ export type Database = {
           phone?: string | null
           avatar_url?: string | null
           preferred_language?: string
+          theme?: string
+          role?: 'user' | 'admin'
           created_at?: string
           updated_at?: string
         }
@@ -44,70 +50,73 @@ export type Database = {
       restaurants: {
         Row: {
           id: string
-          name: string
-          name_ru: string | null
-          description: string | null
+          name_kk: string
+          name_ru: string
+          name_en: string
+          description_kk: string | null
           description_ru: string | null
+          description_en: string | null
           image_url: string | null
-          cover_image_url: string | null
+          banner_url: string | null
+          address: string
+          phone: string | null
           rating: number
           delivery_time_min: number
           delivery_time_max: number
           delivery_fee: number
-          min_order: number
+          minimum_order: number
           is_open: boolean
-          categories: string[]
-          address: string | null
-          address_ru: string | null
-          phone: string | null
-          working_hours: string | null
-          working_hours_ru: string | null
+          cuisine_types: string[]
+          opening_hours: Json | null
+          is_new: boolean
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
-          name: string
-          name_ru?: string | null
-          description?: string | null
+          name_kk: string
+          name_ru: string
+          name_en: string
+          description_kk?: string | null
           description_ru?: string | null
+          description_en?: string | null
           image_url?: string | null
-          cover_image_url?: string | null
+          banner_url?: string | null
+          address: string
+          phone?: string | null
           rating?: number
           delivery_time_min?: number
           delivery_time_max?: number
           delivery_fee?: number
-          min_order?: number
+          minimum_order?: number
           is_open?: boolean
-          categories?: string[]
-          address?: string | null
-          address_ru?: string | null
-          phone?: string | null
-          working_hours?: string | null
-          working_hours_ru?: string | null
+          cuisine_types?: string[]
+          opening_hours?: Json | null
+          is_new?: boolean
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
-          name?: string
-          name_ru?: string | null
-          description?: string | null
+          name_kk?: string
+          name_ru?: string
+          name_en?: string
+          description_kk?: string | null
           description_ru?: string | null
+          description_en?: string | null
           image_url?: string | null
-          cover_image_url?: string | null
+          banner_url?: string | null
+          address?: string
+          phone?: string | null
           rating?: number
           delivery_time_min?: number
           delivery_time_max?: number
           delivery_fee?: number
-          min_order?: number
+          minimum_order?: number
           is_open?: boolean
-          categories?: string[]
-          address?: string | null
-          address_ru?: string | null
-          phone?: string | null
-          working_hours?: string | null
-          working_hours_ru?: string | null
+          cuisine_types?: string[]
+          opening_hours?: Json | null
+          is_new?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -116,51 +125,57 @@ export type Database = {
         Row: {
           id: string
           restaurant_id: string
-          name: string
-          name_ru: string | null
-          description: string | null
+          category_id: string | null
+          name_kk: string
+          name_ru: string
+          name_en: string
+          description_kk: string | null
           description_ru: string | null
-          price: number
+          description_en: string | null
           image_url: string | null
-          category: string
-          category_ru: string | null
+          price: number
           is_available: boolean
-          ingredients: string | null
-          ingredients_ru: string | null
+          is_popular: boolean
+          is_stop_list: boolean
+          preparation_time: number
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
           restaurant_id: string
-          name: string
-          name_ru?: string | null
-          description?: string | null
+          category_id?: string | null
+          name_kk: string
+          name_ru: string
+          name_en: string
+          description_kk?: string | null
           description_ru?: string | null
-          price: number
+          description_en?: string | null
           image_url?: string | null
-          category: string
-          category_ru?: string | null
+          price: number
           is_available?: boolean
-          ingredients?: string | null
-          ingredients_ru?: string | null
+          is_popular?: boolean
+          is_stop_list?: boolean
+          preparation_time?: number
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           restaurant_id?: string
-          name?: string
-          name_ru?: string | null
-          description?: string | null
+          category_id?: string | null
+          name_kk?: string
+          name_ru?: string
+          name_en?: string
+          description_kk?: string | null
           description_ru?: string | null
-          price?: number
+          description_en?: string | null
           image_url?: string | null
-          category?: string
-          category_ru?: string | null
+          price?: number
           is_available?: boolean
-          ingredients?: string | null
-          ingredients_ru?: string | null
+          is_popular?: boolean
+          is_stop_list?: boolean
+          preparation_time?: number
           created_at?: string
           updated_at?: string
         }
@@ -168,42 +183,48 @@ export type Database = {
       orders: {
         Row: {
           id: string
+          order_number: string
           user_id: string
           restaurant_id: string
           status: string
           total_amount: number
           delivery_fee: number
-          delivery_address: string | null
-          delivery_instructions: string | null
-          phone: string | null
+          delivery_address: string
+          delivery_notes: string | null
+          payment_method: string
+          phone: string
           estimated_delivery_time: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
+          order_number: string
           user_id: string
           restaurant_id: string
           status?: string
           total_amount: number
           delivery_fee?: number
-          delivery_address?: string | null
-          delivery_instructions?: string | null
-          phone?: string | null
+          delivery_address: string
+          delivery_notes?: string | null
+          payment_method?: string
+          phone: string
           estimated_delivery_time?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
+          order_number?: string
           user_id?: string
           restaurant_id?: string
           status?: string
           total_amount?: number
           delivery_fee?: number
-          delivery_address?: string | null
-          delivery_instructions?: string | null
-          phone?: string | null
+          delivery_address?: string
+          delivery_notes?: string | null
+          payment_method?: string
+          phone?: string
           estimated_delivery_time?: string | null
           created_at?: string
           updated_at?: string
@@ -216,6 +237,7 @@ export type Database = {
           menu_item_id: string
           quantity: number
           price: number
+          notes: string | null
           created_at: string
         }
         Insert: {
@@ -224,6 +246,7 @@ export type Database = {
           menu_item_id: string
           quantity: number
           price: number
+          notes?: string | null
           created_at?: string
         }
         Update: {
@@ -232,6 +255,7 @@ export type Database = {
           menu_item_id?: string
           quantity?: number
           price?: number
+          notes?: string | null
           created_at?: string
         }
       }
@@ -240,7 +264,9 @@ export type Database = {
           id: string
           user_id: string
           menu_item_id: string
+          restaurant_id: string
           quantity: number
+          notes: string | null
           created_at: string
           updated_at: string
         }
@@ -248,7 +274,9 @@ export type Database = {
           id?: string
           user_id: string
           menu_item_id: string
+          restaurant_id: string
           quantity?: number
+          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -256,7 +284,9 @@ export type Database = {
           id?: string
           user_id?: string
           menu_item_id?: string
+          restaurant_id?: string
           quantity?: number
+          notes?: string | null
           created_at?: string
           updated_at?: string
         }

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Home, UtensilsCrossed, Heart, ShoppingCart, Clock } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useCartCount } from '@/hooks/use-cart-count'
+import { useFavoritesCount } from '@/hooks/use-favorites-count'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 
@@ -12,11 +13,12 @@ export function BottomNav() {
   const pathname = usePathname()
   const { t } = useI18n()
   const cartCount = useCartCount()
+  const favoritesCount = useFavoritesCount()
 
   const navItems = [
     { href: '/', label: t.common.home, icon: Home },
     { href: '/restaurants', label: t.common.menu, icon: UtensilsCrossed },
-    { href: '/favorites', label: t.common.favorites, icon: Heart },
+    { href: '/favorites', label: t.common.favorites, icon: Heart, badge: favoritesCount },
     { href: '/cart', label: t.common.cart, icon: ShoppingCart, badge: cartCount },
     { href: '/orders', label: t.common.orders, icon: Clock },
   ]

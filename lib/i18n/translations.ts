@@ -30,6 +30,8 @@ export const translations = {
       loading: 'Loading...',
       error: 'Error',
       success: 'Success',
+      addedToFavorites: 'Added to favorites',
+      removedFromFavorites: 'Removed from favorites',
     },
     home: {
       title: 'Məzir APP',
@@ -155,6 +157,8 @@ export const translations = {
       loading: 'Жүктелуде...',
       error: 'Қате',
       success: 'Сәтті',
+      addedToFavorites: 'Таңдаулыларға қосылды',
+      removedFromFavorites: 'Таңдаулылардан алынып тасталды',
     },
     home: {
       title: 'Məzir APP',

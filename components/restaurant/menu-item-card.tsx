@@ -9,6 +9,7 @@ import { Database } from '@/lib/supabase/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
+import { FavoriteButton } from '@/components/restaurant/favorite-button'
 
 type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
   restaurant?: {
@@ -31,8 +32,8 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
         restaurant_id: item.restaurant_id,
         quantity: 1,
         menu_item: {
-          name_ru: item.name_ru || item.name,
-          name_en: item.name,
+          name_ru: item.name_ru,
+          name_en: item.name_en,
           price: item.price,
           image_url: item.image_url || '',
           restaurant: {
@@ -58,7 +59,7 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
         {item.image_url ? (
           <Image
             src={item.image_url}
-            alt={locale === 'ru' && item.name_ru ? item.name_ru : item.name}
+            alt={locale === 'ru' ? item.name_ru : item.name_kk}
             fill
             className="object-cover"
           />
@@ -67,16 +68,19 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
             No image
           </div>
         )}
+        <div className="absolute top-2 right-2 z-10">
+          <FavoriteButton menuItemId={item.id} />
+        </div>
       </div>
 
       <CardContent className="p-3">
         <h3 className="font-semibold text-sm mb-1 line-clamp-2 min-h-[2.5rem]">
-          {locale === 'ru' && item.name_ru ? item.name_ru : item.name}
+          {locale === 'ru' ? item.name_ru : item.name_kk}
         </h3>
 
-        {item.description && (
+        {item.description_kk && (
           <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
-            {locale === 'ru' && item.description_ru ? item.description_ru : item.description}
+            {locale === 'ru' ? item.description_ru : item.description_kk}
           </p>
         )}
 

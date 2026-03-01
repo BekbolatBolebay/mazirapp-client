@@ -27,6 +27,7 @@ This app uses **local storage** for client data persistence. No authentication i
 
 ### 3. Favorites
 - Restaurant IDs
+- Menu Item (Food) IDs
 - Persistent favorites list
 
 ### 4. Order History

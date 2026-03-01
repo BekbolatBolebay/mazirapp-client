@@ -5,14 +5,14 @@ import Image from 'next/image'
 import { useI18n } from '@/lib/i18n/i18n-context'
 
 const categories = [
-  { id: 'fast-food', image: '/images/categories/fast-food.png', nameEn: 'Fast Food', nameRu: 'Фаст-фуд' },
-  { id: 'desserts', image: '/images/categories/desserts.png', nameEn: 'Desserts', nameRu: 'Үлттық тағамдар' },
-  { id: 'drinks', image: '/images/categories/drinks.png', nameEn: 'Drinks', nameRu: 'Сусындар' },
-  { id: 'dinner', image: '/images/categories/dinner.png', nameEn: 'Dinner', nameRu: 'Кешкі аска' },
-  { id: 'combos', image: '/images/categories/combos.png', nameEn: 'Combos', nameRu: 'Комболар' },
-  { id: 'diet', image: '/images/categories/diet-food.png', nameEn: 'Diet Food', nameRu: 'Десерттер' },
-  { id: 'snacks', image: '/images/categories/snacks.png', nameEn: 'Snacks', nameRu: 'Диеталық тағамдар' },
-  { id: 'more', image: '/images/categories/all.png', nameEn: 'More', nameRu: 'Барлығы' },
+  { id: 'fast-food', image: '/images/categories/fast-food.png', nameEn: 'Fast Food', nameRu: 'Фаст-фуд', dbName: 'Фаст-фуд' },
+  { id: 'national', image: '/images/categories/desserts.png', nameEn: 'National', nameRu: 'Ұлттық тағамдар', dbName: 'Ұлттық тағамдар' },
+  { id: 'drinks', image: '/images/categories/drinks.png', nameEn: 'Drinks', nameRu: 'Сусындар', dbName: 'Сусындар' },
+  { id: 'dinner', image: '/images/categories/dinner.png', nameEn: 'Dinner', nameRu: 'Кешкі аска', dbName: 'Кешкі аска' },
+  { id: 'combos', image: '/images/categories/combos.png', nameEn: 'Combos', nameRu: 'Комболар', dbName: 'Комболар' },
+  { id: 'desserts', image: '/images/categories/diet-food.png', nameEn: 'Desserts', nameRu: 'Десерттер', dbName: 'Десерттер' },
+  { id: 'diet', image: '/images/categories/snacks.png', nameEn: 'Diet', nameRu: 'Диеталық тағамдар', dbName: 'Диеталық тағамдар' },
+  { id: 'more', image: '/images/categories/all.png', nameEn: 'More', nameRu: 'Барлығы', dbName: '' },
 ]
 
 export function CategoryGrid() {
@@ -23,7 +23,11 @@ export function CategoryGrid() {
       <h2 className="text-lg font-bold mb-4">{t.home.categories}</h2>
       <div className="grid grid-cols-4 gap-4 px-2">
         {categories.map((category) => (
-          <Link key={category.id} href="/restaurants" className="block group">
+          <Link
+            key={category.id}
+            href={category.dbName ? `/restaurants?category=${encodeURIComponent(category.dbName)}` : '/restaurants'}
+            className="block group"
+          >
             <div className="flex flex-col items-center gap-1.5">
               <div className="relative w-14 h-14 rounded-full overflow-hidden bg-accent/5 ring-1 ring-border/50 group-hover:ring-primary/30 transition-all duration-300">
                 <Image

@@ -56,12 +56,12 @@ function generateUserId(): string {
 // Get or create local user
 export function getLocalUser(): LocalUser {
   if (typeof window === 'undefined') return { id: '', created_at: '' }
-  
+
   const stored = localStorage.getItem('local_user')
   if (stored) {
     return JSON.parse(stored)
   }
-  
+
   const newUser: LocalUser = {
     id: generateUserId(),
     created_at: new Date().toISOString()
@@ -73,7 +73,7 @@ export function getLocalUser(): LocalUser {
 // Update local user info
 export function updateLocalUser(data: Partial<LocalUser>) {
   if (typeof window === 'undefined') return
-  
+
   const user = getLocalUser()
   const updated = { ...user, ...data }
   localStorage.setItem('local_user', JSON.stringify(updated))
@@ -82,7 +82,7 @@ export function updateLocalUser(data: Partial<LocalUser>) {
 // Cart management
 export function getLocalCart(): LocalCartItem[] {
   if (typeof window === 'undefined') return []
-  
+
   const stored = localStorage.getItem('local_cart')
   return stored ? JSON.parse(stored) : []
 }
@@ -98,20 +98,20 @@ export function addToLocalCart(item: LocalCartItem) {
   const existingIndex = cart.findIndex(
     i => i.menu_item_id === item.menu_item_id && i.restaurant_id === item.restaurant_id
   )
-  
+
   if (existingIndex >= 0) {
     cart[existingIndex].quantity += item.quantity
   } else {
     cart.push(item)
   }
-  
+
   saveLocalCart(cart)
 }
 
 export function updateCartItemQuantity(itemId: string, quantity: number) {
   const cart = getLocalCart()
   const item = cart.find(i => i.id === itemId)
-  
+
   if (item) {
     if (quantity <= 0) {
       saveLocalCart(cart.filter(i => i.id !== itemId))
@@ -136,7 +136,7 @@ export function clearLocalCart() {
 // Favorites management
 export function getLocalFavorites(): string[] {
   if (typeof window === 'undefined') return []
-  
+
   const stored = localStorage.getItem('local_favorites')
   return stored ? JSON.parse(stored) : []
 }
@@ -144,14 +144,16 @@ export function getLocalFavorites(): string[] {
 export function toggleLocalFavorite(restaurantId: string): boolean {
   const favorites = getLocalFavorites()
   const index = favorites.indexOf(restaurantId)
-  
+
   if (index >= 0) {
     favorites.splice(index, 1)
     localStorage.setItem('local_favorites', JSON.stringify(favorites))
+    window.dispatchEvent(new Event('favoritesUpdated'))
     return false
   } else {
     favorites.push(restaurantId)
     localStorage.setItem('local_favorites', JSON.stringify(favorites))
+    window.dispatchEvent(new Event('favoritesUpdated'))
     return true
   }
 }
@@ -160,10 +162,39 @@ export function isLocalFavorite(restaurantId: string): boolean {
   return getLocalFavorites().includes(restaurantId)
 }
 
+// Food Favorites management
+export function getLocalFoodFavorites(): string[] {
+  if (typeof window === 'undefined') return []
+
+  const stored = localStorage.getItem('local_food_favorites')
+  return stored ? JSON.parse(stored) : []
+}
+
+export function toggleLocalFoodFavorite(menuItemId: string): boolean {
+  const favorites = getLocalFoodFavorites()
+  const index = favorites.indexOf(menuItemId)
+
+  if (index >= 0) {
+    favorites.splice(index, 1)
+    localStorage.setItem('local_food_favorites', JSON.stringify(favorites))
+    window.dispatchEvent(new Event('favoritesUpdated'))
+    return false
+  } else {
+    favorites.push(menuItemId)
+    localStorage.setItem('local_food_favorites', JSON.stringify(favorites))
+    window.dispatchEvent(new Event('favoritesUpdated'))
+    return true
+  }
+}
+
+export function isLocalFoodFavorite(menuItemId: string): boolean {
+  return getLocalFoodFavorites().includes(menuItemId)
+}
+
 // Orders history
 export function getLocalOrders(): LocalOrder[] {
   if (typeof window === 'undefined') return []
-  
+
   const stored = localStorage.getItem('local_orders')
   return stored ? JSON.parse(stored) : []
 }
@@ -177,7 +208,7 @@ export function saveLocalOrder(order: LocalOrder) {
 export function updateLocalOrderStatus(orderId: string, status: string) {
   const orders = getLocalOrders()
   const order = orders.find(o => o.id === orderId)
-  
+
   if (order) {
     order.status = status
     localStorage.setItem('local_orders', JSON.stringify(orders))
@@ -187,9 +218,11 @@ export function updateLocalOrderStatus(orderId: string, status: string) {
 // Clear all local data
 export function clearAllLocalData() {
   if (typeof window === 'undefined') return
-  
+
   localStorage.removeItem('local_cart')
   localStorage.removeItem('local_favorites')
+  localStorage.removeItem('local_food_favorites')
   localStorage.removeItem('local_orders')
   window.dispatchEvent(new Event('cartUpdated'))
+  window.dispatchEvent(new Event('favoritesUpdated'))
 }

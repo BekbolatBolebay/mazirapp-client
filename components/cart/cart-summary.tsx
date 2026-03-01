@@ -9,23 +9,27 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 
+import { LocalCartItem, clearLocalCart } from '@/lib/storage/local-storage'
+
 export function CartSummary({
   subtotal,
   deliveryFee,
   total,
   restaurantId,
+  items,
 }: {
   subtotal: number
   deliveryFee: number
   total: number
   restaurantId?: string
+  items: LocalCartItem[]
 }) {
   const router = useRouter()
   const [promoCode, setPromoCode] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleCheckout = async () => {
-    if (!restaurantId) {
+    if (!restaurantId || items.length === 0) {
       toast.error('Қате орын алды')
       return
     }
@@ -35,23 +39,14 @@ export function CartSummary({
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (!user) {
         toast.error('Жүйеге кіріңіз')
         router.push('/auth/signin')
         return
       }
 
-      const { data: cartItems } = await supabase
-        .from('cart_items')
-        .select('*, menu_items(*)')
-        .eq('user_id', user.id)
-
-      if (!cartItems || cartItems.length === 0) {
-        toast.error('Себет бос')
-        return
-      }
-
+      // Create order in Supabase
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -60,17 +55,23 @@ export function CartSummary({
           status: 'pending',
           total_amount: total,
           delivery_fee: deliveryFee,
+          delivery_address: 'Customer Address',
+          payment_method: 'cash',
+          phone: user.phone || '',
+          order_number: `ORD-${Date.now().toString().slice(-6)}`
         })
         .select()
         .single()
 
       if (orderError) throw orderError
 
-      const orderItems = cartItems.map((item) => ({
+      // Create order items
+      const orderItems = items.map((item) => ({
         order_id: order.id,
         menu_item_id: item.menu_item_id,
         quantity: item.quantity,
-        price: item.menu_items?.price || 0,
+        price: item.menu_item.price || 0,
+        name_ru: item.menu_item.name_ru || '',
       }))
 
       const { error: itemsError } = await supabase
@@ -79,18 +80,18 @@ export function CartSummary({
 
       if (itemsError) throw itemsError
 
-      const { error: deleteError } = await supabase
-        .from('cart_items')
-        .delete()
-        .eq('user_id', user.id)
-
-      if (deleteError) throw deleteError
+      // Clear local cart
+      clearLocalCart()
 
       toast.success('Тапсырыс жасалды!')
-      router.push(`/orders/${order.id}`)
-    } catch (error) {
+
+      router.refresh()
+      setTimeout(() => {
+        router.push(`/orders/${order.id}`)
+      }, 500)
+    } catch (error: any) {
       console.error('[v0] Error creating order:', error)
-      toast.error('Қате орын алды')
+      toast.error('Қате орын алды: ' + (error.message || ''))
     } finally {
       setLoading(false)
     }
@@ -116,7 +117,7 @@ export function CartSummary({
             <span className="text-muted-foreground">Тауарлар</span>
             <span className="font-medium">{subtotal.toFixed(0)}₸</span>
           </div>
-          
+
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Жеткізу</span>
             <span className="font-medium">

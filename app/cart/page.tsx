@@ -33,6 +33,7 @@ export default function CartPage() {
                 deliveryFee={deliveryFee}
                 total={total}
                 restaurantId={cartItems[0].restaurant_id}
+                items={cartItems}
               />
             </>
           ) : (

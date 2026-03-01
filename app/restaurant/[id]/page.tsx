@@ -24,14 +24,19 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
     notFound()
   }
 
+  const { data: categories } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('cafe_id', id)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+
   const { data: menuItems } = await supabase
     .from('menu_items')
     .select('*')
     .eq('restaurant_id', id)
     .eq('is_available', true)
-    .order('created_at', { ascending: true })
-
-  const categories = [...new Set(menuItems?.map((item) => item.name_ru) || [])]
+    .order('sort_order', { ascending: true })
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
@@ -130,14 +135,14 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
             </div>
           )}
 
-          <Tabs defaultValue={categories[0] || 'all'} className="w-full">
+          <Tabs defaultValue="all" className="w-full">
             <TabsList className="w-full justify-start gap-2 h-auto p-1 bg-muted/50 overflow-x-auto">
               <TabsTrigger value="all" className="rounded-lg">
                 Барлығы
               </TabsTrigger>
-              {categories.map((category) => (
-                <TabsTrigger key={category} value={category} className="rounded-lg whitespace-nowrap">
-                  {category}
+              {categories?.map((cat) => (
+                <TabsTrigger key={cat.id} value={cat.id} className="rounded-lg whitespace-nowrap">
+                  {cat.name_ru}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -150,11 +155,11 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
               </div>
             </TabsContent>
 
-            {categories.map((category) => (
-              <TabsContent key={category} value={category} className="mt-4">
+            {categories?.map((cat) => (
+              <TabsContent key={cat.id} value={cat.id} className="mt-4">
                 <div className="grid grid-cols-2 gap-3">
                   {menuItems
-                    ?.filter((item) => item.name_ru === category)
+                    ?.filter((item) => item.category_id === cat.id)
                     .map((item) => (
                       <MenuItemCard key={item.id} item={item} />
                     ))}

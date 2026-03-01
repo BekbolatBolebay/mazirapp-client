@@ -2,31 +2,61 @@
 
 import { useState, useEffect } from 'react'
 import { Heart } from 'lucide-react'
-import { toggleLocalFavorite, isLocalFavorite } from '@/lib/storage/local-storage'
+import {
+  toggleLocalFavorite,
+  isLocalFavorite,
+  toggleLocalFoodFavorite,
+  isLocalFoodFavorite
+} from '@/lib/storage/local-storage'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n/i18n-context'
 
-export function FavoriteButton({ restaurantId }: { restaurantId: string }) {
+interface FavoriteButtonProps {
+  restaurantId?: string
+  menuItemId?: string
+  className?: string
+}
+
+export function FavoriteButton({ restaurantId, menuItemId, className }: FavoriteButtonProps) {
   const { t } = useI18n()
   const [isFavorite, setIsFavorite] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    setIsFavorite(isLocalFavorite(restaurantId))
-  }, [restaurantId])
+  const id = restaurantId || menuItemId
+  const type = restaurantId ? 'restaurant' : 'food'
 
-  const handleToggle = () => {
+  useEffect(() => {
+    if (!id) return
+
+    if (type === 'restaurant') {
+      setIsFavorite(isLocalFavorite(id))
+    } else {
+      setIsFavorite(isLocalFoodFavorite(id))
+    }
+  }, [id, type])
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (!id) return
     setLoading(true)
 
     try {
-      const newState = toggleLocalFavorite(restaurantId)
-      setIsFavorite(newState)
-      
-      if (newState) {
-        toast.success(t('addedToFavorites'))
+      let newState: boolean
+      if (type === 'restaurant') {
+        newState = toggleLocalFavorite(id)
       } else {
-        toast.success(t('removedFromFavorites'))
+        newState = toggleLocalFoodFavorite(id)
+      }
+
+      setIsFavorite(newState)
+
+      if (newState) {
+        toast.success(t('addedToFavorites') || 'Добавлено в избранное')
+      } else {
+        toast.success(t('removedFromFavorites') || 'Удалено из избранного')
       }
     } catch (error) {
       console.error('[v0] Error toggling favorite:', error)
@@ -40,7 +70,7 @@ export function FavoriteButton({ restaurantId }: { restaurantId: string }) {
     <Button
       size="icon"
       variant="ghost"
-      className="rounded-full bg-background/80 backdrop-blur hover:bg-background/90"
+      className={`rounded-full bg-background/80 backdrop-blur hover:bg-background/90 ${className}`}
       onClick={handleToggle}
       disabled={loading}
     >

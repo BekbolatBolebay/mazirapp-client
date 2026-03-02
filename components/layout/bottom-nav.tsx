@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, UtensilsCrossed, Heart, ShoppingCart, Clock } from 'lucide-react'
+import { Home, UtensilsCrossed, Heart, ShoppingCart, Clock, User } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useCartCount } from '@/hooks/use-cart-count'
 import { useFavoritesCount } from '@/hooks/use-favorites-count'
@@ -20,7 +20,7 @@ export function BottomNav() {
     { href: '/restaurants', label: t.common.menu, icon: UtensilsCrossed },
     { href: '/favorites', label: t.common.favorites, icon: Heart, badge: favoritesCount },
     { href: '/cart', label: t.common.cart, icon: ShoppingCart, badge: cartCount },
-    { href: '/orders', label: t.common.orders, icon: Clock },
+    { href: '/profile', label: t.common.profile, icon: User },
   ]
 
   return (

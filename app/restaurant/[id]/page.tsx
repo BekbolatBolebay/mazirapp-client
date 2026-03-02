@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, Heart, Star, Clock, MapPin, Phone } from 'lucide-react'
+import { ArrowLeft, Heart, Star, Clock, MapPin, Phone, Image as ImageIcon, CalendarCheck } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BottomNav } from '@/components/layout/bottom-nav'
@@ -40,14 +40,22 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
-      <div className="relative h-48 bg-muted">
-        {restaurant.banner_url && (
+      <div className="relative h-48 bg-muted overflow-hidden">
+        {restaurant.banner_url ? (
           <Image
             src={restaurant.banner_url}
             alt={restaurant.name_ru || restaurant.name_en}
             fill
-            className="object-cover"
+            className="object-cover transition-transform hover:scale-105 duration-700"
           />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10">
+            <div className="relative">
+              <ImageIcon className="w-12 h-12 text-primary/20" />
+              <div className="absolute inset-0 blur-2xl bg-primary/20 -z-10" />
+            </div>
+            <span className="mt-2 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">Məzir APP</span>
+          </div>
         )}
 
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4">
@@ -123,6 +131,16 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                 </a>
               </Button>
             )}
+
+            {/* Орын брондау батырмасы */}
+            <Link href={`/booking/${id}`} className="block mt-2">
+              <Button
+                className="w-full justify-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+              >
+                <CalendarCheck className="w-4 h-4" />
+                <span className="font-semibold">Орын брондау</span>
+              </Button>
+            </Link>
           </div>
 
           {restaurant.cuisine_types && restaurant.cuisine_types.length > 0 && (

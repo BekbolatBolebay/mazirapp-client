@@ -39,8 +39,11 @@ export function FoodSection({ title, items }: { title: string; items: MenuItem[]
                     className="object-cover"
                   />
                 ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-                    No image
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+                    <div className="relative">
+                      <Plus className="w-6 h-6 text-primary/10" />
+                    </div>
+                    <span className="mt-1 text-[8px] font-bold text-muted-foreground/30 uppercase tracking-widest">Məzir APP</span>
                   </div>
                 )}
                 <div className="absolute top-2 right-2 z-10">

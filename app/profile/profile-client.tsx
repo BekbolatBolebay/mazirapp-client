@@ -1,0 +1,111 @@
+'use client'
+
+import { User } from '@supabase/supabase-js'
+import { LogOut, User as UserIcon, Settings, ChevronRight, Store, CreditCard, Bell, HelpCircle, MapPin } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import { useI18n } from '@/lib/i18n/i18n-context'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import Link from 'next/link'
+
+interface Props {
+    user: User
+    profile: any
+    restaurant?: any
+}
+
+export default function ProfileClient({ user, profile, restaurant }: Props) {
+    const router = useRouter()
+    const { t, locale } = useI18n()
+    const supabase = createClient()
+
+    const handleSignOut = async () => {
+        await supabase.auth.signOut()
+        router.push('/')
+        router.refresh()
+    }
+
+    const menuItems = [
+        { label: t.profile.editProfile, icon: UserIcon, href: '#' },
+        { label: t.profile.addresses, icon: MapPin, href: '#' },
+        { label: t.profile.paymentMethods, icon: CreditCard, href: '#' },
+        { label: t.profile.notifications, icon: Bell, href: '#' },
+        { label: t.profile.helpSupport, icon: HelpCircle, href: '#' },
+        { label: t.profile.about, icon: Settings, href: '#' },
+    ]
+
+    return (
+        <div className="flex flex-col min-h-screen pb-20 bg-muted/30">
+            {/* Header */}
+            <div className="bg-card px-6 py-8 border-b border-border shadow-sm">
+                <div className="flex items-center gap-4">
+                    <Avatar className="w-16 h-16 border-2 border-primary/20">
+                        <AvatarImage src={profile?.avatar_url} />
+                        <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+                            {profile?.full_name?.charAt(0) || user.email?.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <h1 className="text-xl font-bold text-foreground">{profile?.full_name || 'User'}</h1>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="p-4 space-y-6">
+                {/* Restaurant Management - Only if restaurant exists */}
+                {restaurant && (
+                    <div className="space-y-4">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] px-2">Management</p>
+                        <Link href="/manage">
+                            <Card className="bg-primary/5 hover:bg-primary/10 transition-colors border-primary/20">
+                                <CardContent className="p-4 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center">
+                                        <Store className="w-6 h-6 text-primary" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-primary">{locale === 'ru' ? restaurant.name_ru : restaurant.name_kk}</h3>
+                                        <p className="text-xs text-primary/60">Manage your restaurant, menu and orders</p>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-primary/30" />
+                                </CardContent>
+                            </Card>
+                        </Link>
+                    </div>
+                )}
+
+                {/* Profile Actions */}
+                <div className="space-y-4">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] px-2">Settings</p>
+                    <div className="bg-card rounded-3xl border border-border overflow-hidden">
+                        {menuItems.map((item, idx) => (
+                            <Link
+                                key={idx}
+                                href={item.href}
+                                className={`flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors ${idx !== menuItems.length - 1 ? 'border-b border-border/50' : ''}`}
+                            >
+                                <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center">
+                                    <item.icon className="w-5 h-5 text-muted-foreground" />
+                                </div>
+                                <span className="flex-1 text-sm font-semibold">{item.label}</span>
+                                <ChevronRight className="w-4 h-4 text-muted-foreground/30" />
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Sign Out */}
+                <Button
+                    variant="ghost"
+                    className="w-full py-6 rounded-2xl text-red-500 hover:text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center gap-2 font-bold"
+                    onClick={handleSignOut}
+                >
+                    <LogOut className="w-5 h-5" />
+                    {t.profile.logout}
+                </Button>
+            </div>
+        </div>
+    )
+}

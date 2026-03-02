@@ -38,8 +38,12 @@ export function RestaurantSection({ restaurants }: { restaurants: Restaurant[] }
                       className="object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                      No image
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+                      <div className="relative">
+                        <Star className="w-8 h-8 text-primary/10 fill-primary/5" />
+                        <div className="absolute inset-0 blur-xl bg-primary/10 -z-10" />
+                      </div>
+                      <span className="mt-2 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em]">Məzir</span>
                     </div>
                   )}
                   {restaurant.is_open && (

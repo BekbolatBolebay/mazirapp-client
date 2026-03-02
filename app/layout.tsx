@@ -60,7 +60,7 @@ export default function RootLayout({
           <AuthProvider>
             <I18nProvider>
               {children}
-              <Toaster />
+              <Toaster position="bottom-center" offset={80} duration={4000} />
             </I18nProvider>
           </AuthProvider>
         </ThemeProvider>

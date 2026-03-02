@@ -4,37 +4,105 @@ import Link from 'next/link'
 import { SearchBar } from '@/components/home/search-bar'
 import { RestaurantSection } from '@/components/home/restaurant-section'
 import { createClient } from '@/lib/supabase/server'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { MenuItemCard } from '@/components/restaurant/menu-item-card'
 
 export default async function RestaurantsPage({
-  searchParams
+  searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>
+  searchParams: Promise<{ category?: string; tab?: string }>
 }) {
-  const { category } = await searchParams
+  const { category, tab } = await searchParams
   const supabase = await createClient()
 
-  let query = supabase
-    .from('restaurants')
-    .select('*')
-    .order('rating', { ascending: false })
-
+  // ─────────────────────────────────────────────
+  // КАТЕГОРИЯ ТАҢДАЛСА → тек тамақтарды шығару
+  // ─────────────────────────────────────────────
   if (category) {
-    query = query.contains('cuisine_types', [category])
+    // Категория ID-лерін тап
+    const { data: catRows } = await supabase
+      .from('categories')
+      .select('id')
+      .or(`name_kk.eq.${category},name_ru.eq.${category}`)
+
+    let foodQuery = supabase
+      .from('menu_items')
+      .select('*, restaurants(id, name_ru, name_en, name_kk)')
+      .eq('is_available', true)
+      .order('sort_order', { ascending: true })
+      .limit(60)
+
+    if (catRows && catRows.length > 0) {
+      foodQuery = foodQuery.in('category_id', catRows.map(c => c.id))
+    }
+
+    const { data: menuItems } = await foodQuery
+
+    return (
+      <div className="flex flex-col min-h-screen pb-16">
+        <Header title="Тамақтар" />
+        <main className="flex-1 overflow-auto">
+          <div className="max-w-screen-xl mx-auto px-4 py-4">
+            <SearchBar />
+
+            {/* Категория белгісі */}
+            <div className="flex items-center justify-between mt-4 mb-5 p-3 bg-primary/5 rounded-xl border border-primary/10">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground">Категория:</span>
+                <span className="text-sm font-bold text-primary">{category}</span>
+              </div>
+              <Link href="/restaurants">
+                <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-primary">
+                  <X className="h-4 w-4 mr-1" /> Тазалау
+                </Button>
+              </Link>
+            </div>
+
+            {/* Тамақтар тізімі */}
+            {menuItems && menuItems.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {menuItems.map(item => (
+                  <MenuItemCard
+                    key={item.id}
+                    item={{
+                      ...item,
+                      restaurant: item.restaurants
+                        ? { id: item.restaurants.id, name_ru: item.restaurants.name_ru, name_en: item.restaurants.name_en }
+                        : undefined,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <div className="text-5xl mb-3">🍽️</div>
+                <p className="text-muted-foreground">
+                  &quot;{category}&quot; категориясында тамақ табылмады
+                </p>
+              </div>
+            )}
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    )
   }
 
-  const { data: allRestaurants } = await query
+  // ─────────────────────────────────────────────
+  // КАТЕГОРИЯ ЖОҚ → Кафе | Тамақ tabs
+  // ─────────────────────────────────────────────
+  const activeTab = tab || 'cafes'
 
-  const cafeRestaurants = allRestaurants?.filter(r =>
-    r.cuisine_types && r.cuisine_types.includes('Кафе')
-  ) || []
-
-  const foodRestaurants = allRestaurants?.filter(r =>
-    !r.cuisine_types || !r.cuisine_types.includes('Кафе')
-  ) || []
+  const [{ data: restaurants }, { data: menuItems }] = await Promise.all([
+    supabase.from('restaurants').select('*').order('rating', { ascending: false }),
+    supabase
+      .from('menu_items')
+      .select('*, restaurants(id, name_ru, name_en, name_kk)')
+      .eq('is_available', true)
+      .order('sort_order', { ascending: true })
+      .limit(40),
+  ])
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
@@ -44,60 +112,59 @@ export default async function RestaurantsPage({
         <div className="max-w-screen-xl mx-auto px-4 py-4">
           <SearchBar />
 
-          {category && (
-            <div className="flex items-center justify-between mt-4 p-3 bg-primary/5 rounded-xl border border-primary/10">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground transition-colors line-clamp-1">Категория:</span>
-                <span className="text-sm font-bold text-primary">{category}</span>
+          {/* ── Tabs ── */}
+          <div className="flex gap-1 mt-5 mb-5 bg-muted rounded-xl p-1">
+            <Link
+              href="/restaurants?tab=cafes"
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'cafes' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+            >
+              🏪 Кафе
+            </Link>
+            <Link
+              href="/restaurants?tab=food"
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'food' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+            >
+              🍽️ Тамақ
+            </Link>
+          </div>
+
+          {/* Кафе tab */}
+          {activeTab === 'cafes' && (
+            restaurants && restaurants.length > 0 ? (
+              <RestaurantSection restaurants={restaurants} />
+            ) : (
+              <div className="text-center py-16">
+                <div className="text-5xl mb-3">🏪</div>
+                <p className="text-muted-foreground">Кафелер табылмады</p>
               </div>
-              <Link href="/restaurants">
-                <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-primary">
-                  <X className="h-4 w-4 mr-1" />
-                  Тазалау
-                </Button>
-              </Link>
-            </div>
+            )
           )}
 
-          <Tabs defaultValue="all" className={category ? "mt-4" : "mt-6"}>
-            <TabsList className="w-full grid grid-cols-3">
-              <TabsTrigger value="all">Барлығы</TabsTrigger>
-              <TabsTrigger value="cafes">Кафе</TabsTrigger>
-              <TabsTrigger value="food">Тамақ</TabsTrigger>
-            </TabsList>
-
-            <div className="mt-6">
-              <TabsContent value="all">
-                {allRestaurants && allRestaurants.length > 0 ? (
-                  <RestaurantSection restaurants={allRestaurants} />
-                ) : (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">Мейрамханалар табылмады</p>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="cafes">
-                {cafeRestaurants && cafeRestaurants.length > 0 ? (
-                  <RestaurantSection restaurants={cafeRestaurants} />
-                ) : (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">Кафелер табылмады</p>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="food">
-                {foodRestaurants && foodRestaurants.length > 0 ? (
-                  <RestaurantSection restaurants={foodRestaurants} />
-                ) : (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">Тағамдар табылмады</p>
-                  </div>
-                )}
-              </TabsContent>
-            </div>
-          </Tabs>
+          {/* Тамақ tab */}
+          {activeTab === 'food' && (
+            menuItems && menuItems.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {menuItems.map(item => (
+                  <MenuItemCard
+                    key={item.id}
+                    item={{
+                      ...item,
+                      restaurant: item.restaurants
+                        ? { id: item.restaurants.id, name_ru: item.restaurants.name_ru, name_en: item.restaurants.name_en }
+                        : undefined,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <div className="text-5xl mb-3">🍽️</div>
+                <p className="text-muted-foreground">Тамақтар табылмады</p>
+              </div>
+            )
+          )}
         </div>
       </main>
 

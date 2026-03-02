@@ -89,7 +89,7 @@ export default function AdminMenu() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">
-                                        {item.categories?.name_kk || 'Unknown'}
+                                        {item.restaurants?.name_ru || item.restaurants?.name_en || 'Unknown'}
                                     </td>
                                     <td className="px-6 py-4 font-medium">
                                         {item.price.toLocaleString()}₸

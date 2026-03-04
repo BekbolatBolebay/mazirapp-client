@@ -28,7 +28,7 @@ export function CartList({ items }: { items: LocalCartItem[] }) {
   return (
     <div className="space-y-3">
       <h2 className="font-bold text-lg">{t('foodOrder')}</h2>
-      
+
       {items.map((item) => (
         <Card key={item.id}>
           <CardContent className="p-3">
@@ -37,7 +37,7 @@ export function CartList({ items }: { items: LocalCartItem[] }) {
                 {item.menu_item.image_url ? (
                   <Image
                     src={item.menu_item.image_url}
-                    alt={locale === 'ru' ? item.menu_item.name_ru : item.menu_item.name_en}
+                    alt={locale === 'ru' ? item.menu_item.name_ru : item.menu_item.name_kk}
                     fill
                     className="object-cover"
                   />
@@ -50,11 +50,11 @@ export function CartList({ items }: { items: LocalCartItem[] }) {
 
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-sm mb-1">
-                  {locale === 'ru' ? item.menu_item.name_ru : item.menu_item.name_en}
+                  {locale === 'ru' ? item.menu_item.name_ru : item.menu_item.name_kk}
                 </h3>
-                
+
                 <p className="text-xs text-muted-foreground mb-2 line-clamp-1">
-                  {locale === 'ru' ? item.menu_item.restaurant.name_ru : item.menu_item.restaurant.name_en}
+                  {locale === 'ru' ? item.menu_item.restaurant.name_ru : item.menu_item.restaurant.name_kk}
                 </p>
 
                 <div className="flex items-center justify-between">
@@ -71,11 +71,11 @@ export function CartList({ items }: { items: LocalCartItem[] }) {
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
-                    
+
                     <span className="w-6 text-center font-medium">
                       {item.quantity}
                     </span>
-                    
+
                     <Button
                       size="icon"
                       variant="outline"

@@ -35,11 +35,13 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
       restaurant_id: item.restaurant_id,
       quantity,
       menu_item: {
+        name_kk: item.name_kk || item.name_ru,
         name_ru: item.name_ru,
         name_en: item.name_en,
         price: item.price,
         image_url: item.image_url || '',
         restaurant: {
+          name_kk: item.restaurant?.name_ru || '', // Fallback to name_ru if name_kk missing in local type
           name_ru: item.restaurant?.name_ru || '',
           name_en: item.restaurant?.name_en || '',
         },

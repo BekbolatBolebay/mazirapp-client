@@ -13,11 +13,13 @@ export interface LocalCartItem {
   restaurant_id: string
   quantity: number
   menu_item: {
+    name_kk: string
     name_ru: string
     name_en: string
     price: number
     image_url: string
     restaurant: {
+      name_kk: string
       name_ru: string
       name_en: string
     }
@@ -31,6 +33,7 @@ export interface LocalOrder {
     menu_item_id: string
     quantity: number
     price: number
+    name_kk: string
     name_ru: string
     name_en: string
   }>
@@ -40,6 +43,7 @@ export interface LocalOrder {
   status: string
   created_at: string
   restaurant: {
+    name_kk: string
     name_ru: string
     name_en: string
     address_ru: string

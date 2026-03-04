@@ -11,9 +11,12 @@ import { Minus, Plus, Trash2, CalendarCheck } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
+import { useI18n } from '@/lib/i18n/i18n-context'
+
 type Tab = 'food' | 'cafe'
 
 function BookingCartSection() {
+  const { t, locale } = useI18n()
   const [items, setItems] = useState<BookingCartItem[]>([])
 
   useEffect(() => {
@@ -29,9 +32,9 @@ function BookingCartSection() {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <CalendarCheck className="w-14 h-14 text-muted-foreground/20 mb-3" />
-        <h2 className="text-lg font-bold mb-1">Брондау себеті бос</h2>
+        <h2 className="text-lg font-bold mb-1">{t.cart.booking_cart_empty}</h2>
         <p className="text-sm text-muted-foreground">
-          Орын брондаған кезде тамақты алдын ала тапсырыс ете аласыз
+          {t.cart.pre_order_desc}
         </p>
       </div>
     )
@@ -40,12 +43,12 @@ function BookingCartSection() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-bold text-base">Алдын ала тапсырыс</h2>
+        <h2 className="font-bold text-base">{t.cart.pre_order_label}</h2>
         <button
           onClick={() => clearBookingCart()}
           className="flex items-center gap-1 text-xs text-red-500"
         >
-          <Trash2 className="w-3.5 h-3.5" /> Тазалау
+          <Trash2 className="w-3.5 h-3.5" /> {t.cart.clear_cart}
         </button>
       </div>
 
@@ -54,13 +57,13 @@ function BookingCartSection() {
           <div key={item.id} className="bg-card rounded-2xl border border-border p-3 flex gap-3">
             <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
               {item.image_url ? (
-                <Image src={item.image_url} alt={item.name_ru} fill className="object-cover" unoptimized />
+                <Image src={item.image_url} alt={locale === 'ru' ? item.name_ru : item.name_kk} fill className="object-cover" unoptimized />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-2xl">🍽️</div>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold line-clamp-2 mb-1">{item.name_ru}</p>
+              <p className="text-sm font-semibold line-clamp-2 mb-1">{locale === 'ru' ? item.name_ru : item.name_kk}</p>
               <p className="text-sm font-bold text-primary">{(item.price * item.quantity).toLocaleString()}₸</p>
             </div>
             <div className="flex flex-col items-center justify-center gap-1">
@@ -85,11 +88,11 @@ function BookingCartSection() {
       {/* Summary */}
       <div className="bg-primary/5 rounded-2xl p-4 border border-primary/10">
         <div className="flex items-center justify-between font-bold">
-          <span>Жалпы</span>
+          <span>{t.cart.total_label}</span>
           <span className="text-primary text-lg">{total.toLocaleString()}₸</span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Бұл брондаудағы алдын ала тапсырыс — бронды жалғастырып төлеңіз
+          {t.cart.pre_order_summary_desc}
         </p>
       </div>
     </div>
@@ -97,6 +100,7 @@ function BookingCartSection() {
 }
 
 export default function CartPage() {
+  const { t, locale } = useI18n()
   const cartItems = useLocalCart()
   const [tab, setTab] = useState<Tab>('food')
   const [bookingCount, setBookingCount] = useState(0)
@@ -115,7 +119,7 @@ export default function CartPage() {
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
-      <Header title="Себет" />
+      <Header title={t.cart.title} />
 
       {/* Tabs */}
       <div className="flex gap-1 px-4 pt-4 pb-2 bg-background">
@@ -126,7 +130,7 @@ export default function CartPage() {
             tab === 'food' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
           )}
         >
-          🍽️ Тамақ
+          🍽️ {t.cart.food_tab}
           {foodCount > 0 && (
             <span className={cn(
               'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center',
@@ -143,7 +147,7 @@ export default function CartPage() {
             tab === 'cafe' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
           )}
         >
-          🏪 Кафе
+          🏪 {t.cart.cafe_tab}
           {bookingCount > 0 && (
             <span className={cn(
               'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center',
@@ -175,8 +179,8 @@ export default function CartPage() {
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="text-6xl mb-4">🛒</div>
-                  <h2 className="text-xl font-bold mb-2">Себет бос</h2>
-                  <p className="text-muted-foreground text-sm">Тамақтарды себетке қосыңыз</p>
+                  <h2 className="text-xl font-bold mb-2">{t.cart.empty}</h2>
+                  <p className="text-muted-foreground text-sm">{t.cart.add_items_desc}</p>
                 </div>
               )}
             </>

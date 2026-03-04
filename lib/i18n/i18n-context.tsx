@@ -40,7 +40,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem('locale') as Locale
-    if (saved && (saved === 'en' || saved === 'ru')) {
+    if (saved && (saved === 'en' || saved === 'ru' || saved === 'kk')) {
       setLocaleState(saved)
     }
   }, [])

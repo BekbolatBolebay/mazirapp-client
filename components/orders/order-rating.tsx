@@ -9,6 +9,8 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
+import { useI18n } from '@/lib/i18n/i18n-context'
+
 interface OrderRatingProps {
     orderId: string
     restaurantId: string
@@ -24,6 +26,7 @@ export function OrderRating({
     initialRating = 0,
     initialComment = ''
 }: OrderRatingProps) {
+    const { t } = useI18n()
     const [rating, setRating] = useState(initialRating)
     const [comment, setComment] = useState(initialComment)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -32,7 +35,7 @@ export function OrderRating({
 
     const handleSubmit = async () => {
         if (rating === 0) {
-            toast.error('Жұлдызшаны таңдаңыз')
+            toast.error(t.orders.selectStarToast)
             return
         }
 
@@ -45,16 +48,16 @@ export function OrderRating({
                     customer_name: customerName,
                     rating,
                     comment,
-                    order_id: orderId, // Assuming this column exists or can be added
+                    order_id: orderId,
                 })
 
             if (error) throw error
 
             setSubmitted(true)
-            toast.success('Пікіріңіз үшін рахмет!')
+            toast.success(t.orders.reviewThanksToast)
         } catch (error: any) {
             console.error('Error submitting review:', error)
-            toast.error('Қате орын алды: ' + error.message)
+            toast.error(t.cart.order_error + error.message)
         } finally {
             setIsSubmitting(false)
         }
@@ -75,7 +78,7 @@ export function OrderRating({
                             />
                         ))}
                     </div>
-                    <p className="text-sm font-medium">Пікіріңіз қабылданды. Рахмет!</p>
+                    <p className="text-sm font-medium">{t.orders.ratingSubmitted}</p>
                 </CardContent>
             </Card>
         )
@@ -85,8 +88,8 @@ export function OrderRating({
         <Card>
             <CardContent className="p-4 space-y-4">
                 <div className="text-center">
-                    <h3 className="font-bold text-lg">Тапсырысты бағалаңыз</h3>
-                    <p className="text-sm text-muted-foreground">Сіздің пікіріңіз біз үшін маңызды</p>
+                    <h3 className="font-bold text-lg">{t.orders.rateOrder}</h3>
+                    <p className="text-sm text-muted-foreground">{t.orders.rateDesc}</p>
                 </div>
 
                 <div className="flex justify-center gap-2">
@@ -107,7 +110,7 @@ export function OrderRating({
                 </div>
 
                 <Textarea
-                    placeholder="Пікіріңізді қалдырыңыз (міндетті емес)..."
+                    placeholder={t.orders.reviewPlaceholder}
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     className="min-h-[80px] text-sm"
@@ -118,7 +121,7 @@ export function OrderRating({
                     onClick={handleSubmit}
                     disabled={isSubmitting || rating === 0}
                 >
-                    {isSubmitting ? 'Жіберілуде...' : 'Жіберу'}
+                    {isSubmitting ? t.cart.sending : t.orders.submitBtn}
                 </Button>
             </CardContent>
         </Card>

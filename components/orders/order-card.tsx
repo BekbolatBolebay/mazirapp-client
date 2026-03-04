@@ -27,18 +27,20 @@ type Order = {
   }>
 }
 
-const statusMap: Record<string, { text: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  pending: { text: 'Белсенді статус', variant: 'secondary' },
-  preparing: { text: 'Дайындалуда', variant: 'default' },
-  ready: { text: 'Дайын', variant: 'default' },
-  delivering: { text: 'Дайын', variant: 'default' },
-  delivered: { text: 'Жеткізілді', variant: 'outline' },
-  cancelled: { text: 'Аяқталды', variant: 'destructive' },
+const statusVariantMap: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  pending: 'secondary',
+  preparing: 'default',
+  ready: 'default',
+  delivering: 'default',
+  delivered: 'outline',
+  cancelled: 'destructive',
 }
 
 export function OrderCard({ order }: { order: Order }) {
-  const { locale } = useI18n()
-  const status = statusMap[order.status] || statusMap.pending
+  const { locale, t } = useI18n()
+
+  const statusText = (t.orders.status as any)[order.status] || t.orders.status.pending
+  const variant = statusVariantMap[order.status] || 'secondary'
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -54,7 +56,7 @@ export function OrderCard({ order }: { order: Order }) {
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
-                No image
+                {t.cart.no_image}
               </div>
             )}
           </div>
@@ -63,17 +65,19 @@ export function OrderCard({ order }: { order: Order }) {
             <div className="flex items-start justify-between mb-2">
               <div>
                 <h3 className="font-bold text-base mb-1">
-                  Тапсырыс #{order.id.slice(0, 8)}
+                  {t.orders.order_id_label}{order.id.slice(0, 8)}
                 </h3>
                 {order.restaurants && (
                   <p className="text-sm text-muted-foreground">
-                    {locale === 'ru' && order.restaurants.name_ru 
-                      ? order.restaurants.name_ru 
-                      : order.restaurants.name}
+                    {locale === 'ru' && order.restaurants.name_ru
+                      ? order.restaurants.name_ru
+                      : (locale === 'kk' && (order.restaurants as any).name_kk
+                        ? (order.restaurants as any).name_kk
+                        : order.restaurants.name)}
                   </p>
                 )}
               </div>
-              <Badge variant={status.variant}>{status.text}</Badge>
+              <Badge variant={variant}>{statusText}</Badge>
             </div>
 
             <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
@@ -86,7 +90,7 @@ export function OrderCard({ order }: { order: Order }) {
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs text-muted-foreground">
-                  {order.order_items.reduce((sum, item) => sum + item.quantity, 0)} зат
+                  {order.order_items.reduce((sum, item) => sum + item.quantity, 0)} {t.orders.items}
                 </span>
                 {' · '}
                 <span className="font-bold text-primary">

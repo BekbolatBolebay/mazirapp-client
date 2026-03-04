@@ -57,7 +57,10 @@ export function Header({
                 English {locale === 'en' && '✓'}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLocale('ru')}>
-                Қазақша {locale === 'ru' && '✓'}
+                Русский {locale === 'ru' && '✓'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocale('kk')}>
+                Қазақша {locale === 'kk' && '✓'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

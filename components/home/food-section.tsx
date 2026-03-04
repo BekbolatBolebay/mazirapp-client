@@ -78,11 +78,13 @@ export function FoodSection({ title, items }: { title: string; items: MenuItem[]
                           restaurant_id: item.restaurant_id,
                           quantity: 1,
                           menu_item: {
+                            name_kk: item.name_kk,
                             name_ru: item.name_ru,
                             name_en: item.name_en,
                             price: item.price,
                             image_url: item.image_url || '',
                             restaurant: {
+                              name_kk: item.restaurants?.name_kk || '',
                               name_ru: item.restaurants?.name_ru || '',
                               name_en: item.restaurants?.name_en || ''
                             }

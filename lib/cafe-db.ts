@@ -27,9 +27,20 @@ export type Restaurant = {
     accept_cash: boolean
     accept_kaspi: boolean
     accept_freedom: boolean
+    is_delivery_enabled: boolean
+    is_pickup_enabled: boolean
+    is_booking_enabled: boolean
     is_new: boolean
     created_at: string
     updated_at: string
+}
+
+export type Table = {
+    id: string
+    restaurant_id: string
+    table_number: string
+    capacity: number
+    is_active: boolean
 }
 
 export type Category = {

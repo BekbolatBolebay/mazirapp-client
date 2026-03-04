@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { createClient } from '@/lib/supabase/server'
-
-const r2Client = new S3Client({
-  region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-})
+import { uploadFile } from '@/lib/storage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,27 +18,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const fileName = `${Date.now()}-${file.name}`
+    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`
     const folder = formData.get('folder') as string || 'images'
     const key = `${folder}/${fileName}`
 
-    const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME!,
-      Key: key,
-      Body: buffer,
-      ContentType: file.type,
-    })
+    console.log('--- Uploading to Supabase Storage (food-app-build) ---')
+    const url = await uploadFile(file, key)
+    console.log('Upload Success:', url)
 
-    await r2Client.send(command)
-
-    const publicUrl = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`
-
-    return NextResponse.json({ url: publicUrl })
-  } catch (error) {
+    return NextResponse.json({ url })
+  } catch (error: any) {
     console.error('[v0] Upload error:', error)
     return NextResponse.json(
-      { error: 'Upload failed' },
+      { error: error.message || 'Upload failed' },
       { status: 500 }
     )
   }

@@ -23,6 +23,7 @@ export default function FavoritesPage() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [foodItems, setFoodItems] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'food' | 'cafes'>('cafes')
 
   useEffect(() => {
     async function loadFavorites() {
@@ -55,37 +56,55 @@ export default function FavoritesPage() {
     return () => window.removeEventListener('favoritesUpdated', loadFavorites)
   }, [])
 
-  const hasAnyFavorites = restaurants.length > 0 || foodItems.length > 0
+  const hasAnyFavorites = activeTab === 'cafes' ? restaurants.length > 0 : foodItems.length > 0
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
       <Header title={t.common.favorites} />
 
       <main className="flex-1 overflow-auto bg-muted/30">
-        <div className="max-w-screen-xl mx-auto px-4 py-4 space-y-8">
+        <div className="max-w-screen-xl mx-auto px-4 py-4 space-y-4">
+          {/* Tabs */}
+          <div className="flex gap-1 bg-muted rounded-xl p-1">
+            <button
+              onClick={() => setActiveTab('cafes')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'cafes' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+            >
+              Кафе
+            </button>
+            <button
+              onClick={() => setActiveTab('food')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'food' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+            >
+              Тамақ
+            </button>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           ) : hasAnyFavorites ? (
             <>
-              {restaurants.length > 0 && (
+              {activeTab === 'cafes' && restaurants.length > 0 && (
                 <RestaurantSection restaurants={restaurants} />
               )}
 
-              {foodItems.length > 0 && (
+              {activeTab === 'food' && foodItems.length > 0 && (
                 <FoodSection title={t.home.topRated} items={foodItems} />
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="text-6xl mb-4">❤️</div>
               <h2 className="text-xl font-bold mb-2">{t.cart.empty || 'Бос'}</h2>
               <p className="text-muted-foreground mb-6">
-                Сүйікті мейрамханаларыңыз бен тағамдарыңызды қосыңыз
+                Сүйікті {activeTab === 'cafes' ? 'мейрамханаларыңызды' : 'тағамдарыңызды'} қосыңыз
               </p>
-              <Link href="/" className="px-6 py-2 bg-primary text-primary-foreground rounded-full font-medium">
-                Мейрамханаларды қарау
+              <Link href="/restaurants" className="px-6 py-2 bg-primary text-primary-foreground rounded-full font-medium">
+                Қарау
               </Link>
             </div>
           )}

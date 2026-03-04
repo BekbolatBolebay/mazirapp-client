@@ -20,7 +20,7 @@ export function BottomNav() {
     { href: '/restaurants', label: t.common.menu, icon: UtensilsCrossed },
     { href: '/favorites', label: t.common.favorites, icon: Heart, badge: favoritesCount },
     { href: '/cart', label: t.common.cart, icon: ShoppingCart, badge: cartCount },
-    { href: '/profile', label: t.common.profile, icon: User },
+    { href: '/orders', label: 'Тарих', icon: Clock },
   ]
 
   return (

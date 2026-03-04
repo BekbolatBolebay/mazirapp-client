@@ -192,6 +192,12 @@ export type Database = {
           delivery_address: string
           delivery_notes: string | null
           payment_method: string
+          payment_status: string
+          payment_url: string | null
+          courier_id: string | null
+          one_time_courier_name: string | null
+          one_time_courier_phone: string | null
+          courier_tracking_token: string | null
           phone: string
           estimated_delivery_time: string | null
           created_at: string

@@ -90,9 +90,9 @@ export default async function RestaurantsPage({
   }
 
   // ─────────────────────────────────────────────
-  // КАТЕГОРИЯ ЖОҚ → Кафе | Тамақ tabs
+  // КАТЕГОРИЯ ЖОҚ → Барлығы | Кафе | Тамақ tabs
   // ─────────────────────────────────────────────
-  const activeTab = tab || 'cafes'
+  const activeTab = tab || 'all'
 
   const [{ data: restaurants }, { data: menuItems }] = await Promise.all([
     supabase.from('restaurants').select('*').order('rating', { ascending: false }),
@@ -101,7 +101,7 @@ export default async function RestaurantsPage({
       .select('*, restaurants(id, name_ru, name_en, name_kk)')
       .eq('is_available', true)
       .order('sort_order', { ascending: true })
-      .limit(40),
+      .limit(60),
   ])
 
   return (
@@ -113,22 +113,59 @@ export default async function RestaurantsPage({
           <SearchBar />
 
           {/* ── Tabs ── */}
-          <div className="flex gap-1 mt-5 mb-5 bg-muted rounded-xl p-1">
+          <div className="flex gap-1 mt-5 mb-5 bg-muted rounded-xl p-1 overflow-x-auto no-scrollbar">
             <Link
-              href="/restaurants?tab=cafes"
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'cafes' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+              href="/restaurants?tab=all"
+              className={`flex-1 min-w-[80px] py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'all' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
                 }`}
             >
-              🏪 Кафе
+              Барлығы
+            </Link>
+            <Link
+              href="/restaurants?tab=cafes"
+              className={`flex-1 min-w-[80px] py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'cafes' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+            >
+              Кафе
             </Link>
             <Link
               href="/restaurants?tab=food"
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'food' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+              className={`flex-1 min-w-[80px] py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${activeTab === 'food' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
                 }`}
             >
-              🍽️ Тамақ
+              Тамақ
             </Link>
           </div>
+
+          {/* All tab */}
+          {activeTab === 'all' && (
+            <div className="space-y-8">
+              {restaurants && restaurants.length > 0 && (
+                <RestaurantSection restaurants={restaurants.slice(0, 4)} />
+              )}
+              {menuItems && menuItems.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold">Танымал тағамдар</h2>
+                    <Link href="/restaurants?tab=food" className="text-sm text-primary font-medium">Көбірек</Link>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {menuItems.slice(0, 10).map(item => (
+                      <MenuItemCard
+                        key={item.id}
+                        item={{
+                          ...item,
+                          restaurant: item.restaurants
+                            ? { id: item.restaurants.id, name_ru: item.restaurants.name_ru, name_en: item.restaurants.name_en }
+                            : undefined,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Кафе tab */}
           {activeTab === 'cafes' && (

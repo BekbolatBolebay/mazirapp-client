@@ -6,6 +6,7 @@ import { CategoryGrid } from '@/components/home/category-grid'
 import { RestaurantSection } from '@/components/home/restaurant-section'
 import { FoodSection } from '@/components/home/food-section'
 import { createClient } from '@/lib/supabase/server'
+import { getGlobalCategories } from '@/lib/supabase/categories'
 
 export default async function HomePage() {
   const supabase = await createClient()
@@ -14,6 +15,7 @@ export default async function HomePage() {
     { data: promotions },
     { data: restaurants },
     { data: popularItems },
+    categories
   ] = await Promise.all([
     supabase
       .from('promotions')
@@ -34,21 +36,22 @@ export default async function HomePage() {
       .eq('is_available', true)
       .order('created_at', { ascending: false })
       .limit(10),
+    getGlobalCategories()
   ])
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
       <Header />
-      
+
       <main className="flex-1 overflow-auto">
         <div className="max-w-screen-xl mx-auto px-4 py-4 space-y-6">
           <SearchBar />
-          
+
           {promotions && promotions.length > 0 && (
             <PromotionBanner promotions={promotions} />
           )}
 
-          <CategoryGrid />
+          <CategoryGrid categories={categories} />
 
           {restaurants && restaurants.length > 0 && (
             <RestaurantSection restaurants={restaurants} />

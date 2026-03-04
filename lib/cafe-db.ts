@@ -22,6 +22,11 @@ export type Restaurant = {
     status: 'open' | 'closed' | 'paused'
     opening_hours: any
     cuisine_types: string[]
+    total_seats?: number
+    kaspi_link?: string
+    accept_cash: boolean
+    accept_kaspi: boolean
+    accept_freedom: boolean
     is_new: boolean
     created_at: string
     updated_at: string

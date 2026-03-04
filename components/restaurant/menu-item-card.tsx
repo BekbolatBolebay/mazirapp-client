@@ -95,11 +95,11 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
           {/* Sheet */}
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+          <div className="fixed bottom-0 left-0 right-0 z-[70] bg-card rounded-t-3xl shadow-2xl max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300 pb-20">
             {/* Close button */}
             <div className="flex justify-end p-4 pb-0">
               <button

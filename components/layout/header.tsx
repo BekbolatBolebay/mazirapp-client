@@ -1,6 +1,6 @@
 'use client'
 
-import { Globe, Moon, Sun } from 'lucide-react'
+import { Globe, Moon, Sun, ChevronLeft } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { Button } from '@/components/ui/button'
@@ -10,17 +10,39 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useRouter } from 'next/navigation'
 
-export function Header({ title }: { title?: string }) {
+export function Header({
+  title,
+  backButton = false,
+  onBack
+}: {
+  title?: string,
+  backButton?: boolean,
+  onBack?: () => void
+}) {
   const { theme, setTheme } = useTheme()
   const { locale, setLocale, t } = useI18n()
+  const router = useRouter()
+
+  const handleBack = () => {
+    if (onBack) onBack()
+    else router.back()
+  }
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center justify-between h-14 px-4 max-w-screen-xl mx-auto">
-        <h1 className="text-lg font-bold text-primary">
-          {title || t.home.title}
-        </h1>
+        <div className="flex items-center gap-2">
+          {backButton && (
+            <Button variant="ghost" size="icon" className="h-9 w-9 -ml-2 rounded-full" onClick={handleBack}>
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          )}
+          <h1 className="text-lg font-bold text-primary truncate max-w-[200px]">
+            {title || t.home.title}
+          </h1>
+        </div>
 
         <div className="flex items-center gap-2">
           <DropdownMenu>

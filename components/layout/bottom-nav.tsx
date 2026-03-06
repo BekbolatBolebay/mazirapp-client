@@ -15,6 +15,12 @@ export function BottomNav() {
   const cartCount = useCartCount()
   const favoritesCount = useFavoritesCount()
 
+  // Hide BottomNav on certain pages
+  const hideOn = ['/checkout', '/login', '/register', '/booking']
+  if (hideOn.some(path => pathname?.startsWith(path))) {
+    return null
+  }
+
   const navItems = [
     { href: '/', label: t.common.home, icon: Home },
     { href: '/restaurants', label: t.common.menu, icon: UtensilsCrossed },
@@ -24,8 +30,8 @@ export function BottomNav() {
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="flex items-center justify-around h-16 max-w-screen-xl mx-auto">
+    <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-center justify-around h-16 max-w-screen-xl mx-auto px-2">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           const Icon = item.icon
@@ -35,24 +41,27 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center flex-1 h-full gap-1 text-xs transition-colors relative',
+                'flex flex-col items-center justify-center flex-1 h-full gap-1 text-[10px] font-medium transition-all relative active:scale-90',
                 isActive
                   ? 'text-primary'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <div className="relative">
-                <Icon className="w-5 h-5" />
+                <Icon className={cn("w-5 h-5 transition-transform", isActive && "scale-110")} />
                 {item.badge !== undefined && item.badge > 0 && (
                   <Badge
                     variant="destructive"
-                    className="absolute -top-2 -right-2 min-w-5 h-5 flex items-center justify-center p-0 text-[10px] leading-none"
+                    className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center p-0 text-[10px] leading-none border-2 border-background shadow-sm"
                   >
                     {item.badge}
                   </Badge>
                 )}
               </div>
-              <span className="leading-none">{item.label}</span>
+              <span className={cn("leading-none", isActive && "font-bold")}>{item.label}</span>
+              {isActive && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-primary rounded-b-full shadow-[0_0_10px_rgba(var(--primary),0.3)]" />
+              )}
             </Link>
           )
         })}

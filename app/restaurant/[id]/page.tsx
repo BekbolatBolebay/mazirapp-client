@@ -3,12 +3,12 @@ import Image from 'next/image'
 import { ArrowLeft, Heart, Star, Clock, MapPin, Phone, Image as ImageIcon, CalendarCheck } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MenuItemCard } from '@/components/restaurant/menu-item-card'
 import { FavoriteButton } from '@/components/restaurant/favorite-button'
+import RestaurantMap from '@/components/restaurant/restaurant-map'
 
 export default async function RestaurantPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -141,6 +141,16 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                 <span className="font-semibold">Орын брондау</span>
               </Button>
             </Link>
+
+            {/* Карта (Restaurant Location) */}
+            {restaurant.latitude && restaurant.longitude && (
+              <RestaurantMap
+                latitude={restaurant.latitude}
+                longitude={restaurant.longitude}
+                restaurantName={restaurant.name_kk || restaurant.name_ru}
+                address={restaurant.address}
+              />
+            )}
           </div>
 
           {restaurant.cuisine_types && restaurant.cuisine_types.length > 0 && (
@@ -168,7 +178,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
             <TabsContent value="all" className="mt-4">
               <div className="grid grid-cols-2 gap-3">
                 {menuItems?.map((item) => (
-                  <MenuItemCard key={item.id} item={item} />
+                  <MenuItemCard key={item.id} item={item} isOpen={restaurant.is_open} />
                 ))}
               </div>
             </TabsContent>
@@ -179,7 +189,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                   {menuItems
                     ?.filter((item) => item.category_id === cat.id)
                     .map((item) => (
-                      <MenuItemCard key={item.id} item={item} />
+                      <MenuItemCard key={item.id} item={item} isOpen={restaurant.is_open} />
                     ))}
                 </div>
               </TabsContent>
@@ -188,7 +198,6 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
         </div>
       </main>
 
-      <BottomNav />
     </div>
   )
 }

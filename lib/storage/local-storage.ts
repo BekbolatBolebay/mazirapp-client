@@ -97,19 +97,26 @@ export function saveLocalCart(cart: LocalCartItem[]) {
   window.dispatchEvent(new Event('cartUpdated'))
 }
 
-export function addToLocalCart(item: LocalCartItem) {
+export function addToLocalCart(item: LocalCartItem, force = false): { success: boolean, mismatch?: boolean } {
   const cart = getLocalCart()
-  const existingIndex = cart.findIndex(
+
+  if (cart.length > 0 && cart[0].restaurant_id !== item.restaurant_id && !force) {
+    return { success: false, mismatch: true }
+  }
+
+  const newCart = force ? [] : [...cart]
+  const existingIndex = newCart.findIndex(
     i => i.menu_item_id === item.menu_item_id && i.restaurant_id === item.restaurant_id
   )
 
   if (existingIndex >= 0) {
-    cart[existingIndex].quantity += item.quantity
+    newCart[existingIndex].quantity += item.quantity
   } else {
-    cart.push(item)
+    newCart.push(item)
   }
 
-  saveLocalCart(cart)
+  saveLocalCart(newCart)
+  return { success: true }
 }
 
 export function updateCartItemQuantity(itemId: string, quantity: number) {

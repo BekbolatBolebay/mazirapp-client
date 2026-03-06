@@ -14,7 +14,8 @@ import {
     ChevronRight,
     ListFilter,
     Star,
-    Settings
+    Settings,
+    Shield
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ const navItems = [
     { label: 'Reviews', icon: Star, href: '/admin/reviews' },
     { label: 'Settings', icon: Settings, href: '/admin/settings' },
     { label: 'Clients', icon: Users, href: '/admin/users' },
+    { label: 'Super Admin (New)', icon: Shield, href: 'http://localhost:5173', external: true },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import { OrderRating } from '@/components/orders/order-rating'
 import { OrderTracker } from '@/components/orders/order-tracker'
 import { useI18n } from '@/lib/i18n/i18n-context'
@@ -128,7 +127,6 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
         <main className="flex-1 flex items-center justify-center bg-muted/30">
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </main>
-        <BottomNav />
       </div>
     )
   }
@@ -200,7 +198,10 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
               orderId={order.id}
               initialStatus={order.status}
               initialUpdatedAt={order.updated_at}
+              initialEstimatedReadyAt={order.estimated_ready_at}
               orderType={order.type as any}
+              deliveryFee={Number(order.delivery_fee)}
+              totalAmount={Number(order.total_amount)}
             />
           )}
 
@@ -282,7 +283,9 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                     {order.restaurants.image_url && (
                       <Image
                         src={order.restaurants.image_url}
-                        alt={locale === 'ru' ? order.restaurants.name_ru : (locale === 'kk' && (order.restaurants as any).name_kk ? (order.restaurants as any).name_kk : order.restaurants.name)}
+                        alt={
+                          (locale === 'ru' ? order.restaurants.name_ru : (locale === 'kk' && (order.restaurants as any).name_kk ? (order.restaurants as any).name_kk : order.restaurants.name)) || 'Restaurant'
+                        }
                         fill
                         className="object-cover"
                       />
@@ -327,7 +330,9 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                         {item.menu_items.image_url && (
                           <Image
                             src={item.menu_items.image_url}
-                            alt={locale === 'ru' ? item.menu_items.name_ru : (locale === 'kk' && item.menu_items.name_kk ? item.menu_items.name_kk : item.menu_items.name)}
+                            alt={
+                              (locale === 'ru' ? item.menu_items.name_ru : (locale === 'kk' && item.menu_items.name_kk ? item.menu_items.name_kk : item.menu_items.name)) || 'Menu item'
+                            }
                             fill
                             className="object-cover"
                           />
@@ -378,7 +383,6 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
         </div>
       </main>
 
-      <BottomNav />
 
       {/* Confetti Effect */}
       {showConfetti && (

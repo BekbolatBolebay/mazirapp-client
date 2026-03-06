@@ -1,5 +1,4 @@
 import { Header } from '@/components/layout/header'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import { SearchBar } from '@/components/home/search-bar'
 import Link from 'next/link'
 import { LayoutGrid, ChevronRight } from 'lucide-react'
@@ -51,7 +50,6 @@ export default async function CategoriesPage() {
                 </div>
             </main>
 
-            <BottomNav />
         </div>
     )
 }

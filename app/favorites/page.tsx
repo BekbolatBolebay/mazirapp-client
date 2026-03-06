@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/layout/header'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import { RestaurantSection } from '@/components/home/restaurant-section'
 import { FoodSection } from '@/components/home/food-section'
 import { getLocalFavorites, getLocalFoodFavorites } from '@/lib/storage/local-storage'
@@ -111,7 +110,6 @@ export default function FavoritesPage() {
         </div>
       </main>
 
-      <BottomNav />
     </div>
   )
 }

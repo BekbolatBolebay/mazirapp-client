@@ -119,7 +119,73 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2147483647;
+}
+
+.dark::view-transition-old(root) {
+  z-index: 2147483647;
+}
+
+.dark::view-transition-new(root) {
+  z-index: 1;
+}
+
+/* Global Page Transitions */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.page-transition {
+  animation: fadeInScale 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Premium Interactions */
+.premium-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.premium-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.premium-active {
+  transition: transform 0.1s ease;
+}
+
+.premium-active:active {
+  transform: scale(0.96);
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(var(--background), 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(var(--border), 0.3);
 }

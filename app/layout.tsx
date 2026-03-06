@@ -5,6 +5,7 @@ import { ThemeProvider } from 'next-themes'
 import { AuthProvider } from '@/lib/auth/auth-context'
 import { I18nProvider } from '@/lib/i18n/i18n-context'
 import { Toaster } from '@/components/ui/sonner'
+import { BottomNav } from '@/components/layout/bottom-nav'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'] })
@@ -60,6 +61,7 @@ export default function RootLayout({
           <AuthProvider>
             <I18nProvider>
               {children}
+              <BottomNav />
               <Toaster position="top-center" duration={4 * 1000} />
             </I18nProvider>
           </AuthProvider>

@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { Header } from '@/components/layout/header'
 import { BottomNav } from '@/components/layout/bottom-nav'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
     Calendar, Clock, Users, ChefHat, Minus, Plus, Trash2,
     CheckCircle, ArrowLeft, ArrowRight, Loader2, ShoppingCart, Phone, User
@@ -32,10 +33,22 @@ interface Restaurant {
     id: string
     name_kk: string
     name_ru: string
+    phone: string
     working_hours: string
+    is_booking_enabled: boolean
+    booking_accept_cash: boolean
+    booking_accept_kaspi: boolean
+    booking_accept_freedom: boolean
 }
 
-const STEPS = ['datetime', 'menu', 'confirm'] as const
+interface Table {
+    id: string
+    table_number: string
+    capacity: number
+    is_active: boolean
+}
+
+const STEPS = ['tables', 'datetime', 'menu', 'confirm', 'status'] as const
 type Step = typeof STEPS[number]
 
 // Уақыт слоттары
@@ -67,24 +80,33 @@ function formatDateKK(dateStr: string) {
 
 export default function BookingPage({ restaurantId }: { restaurantId: string }) {
     const router = useRouter()
-    const [step, setStep] = useState<Step>('datetime')
+    const [step, setStep] = useState<Step>('tables')
 
-    // Step 1
+    // Step 0: Tables
+    const [tables, setTables] = useState<Table[]>([])
+    const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
+    const [loadingTables, setLoadingTables] = useState(false)
+
+    // Step 1: DateTime
     const [selectedDate, setSelectedDate] = useState(getTodayDate())
     const [selectedTime, setSelectedTime] = useState('')
     const [guests, setGuests] = useState(2)
+    const [busySlots, setBusySlots] = useState<string[]>([])
+    const [loadingSlots, setLoadingSlots] = useState(false)
 
-    // Step 2
+    // Step 2: Menu
     const [menuItems, setMenuItems] = useState<MenuItem[]>([])
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
     const [bookingCart, setBookingCart] = useState<BookingCartItem[]>([])
     const [loadingMenu, setLoadingMenu] = useState(false)
 
-    // Step 3
+    // Step 3: Confirm
     const [customerName, setCustomerName] = useState('')
     const [customerPhone, setCustomerPhone] = useState('')
+    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'kaspi' | 'freedom' | null>(null)
     const [notes, setNotes] = useState('')
     const [submitting, setSubmitting] = useState(false)
+    const [reservationId, setReservationId] = useState<string | null>(null)
 
     // Booking cart sync
     useEffect(() => {
@@ -94,20 +116,98 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
         return () => window.removeEventListener('bookingCartUpdated', handler)
     }, [])
 
-    // Load restaurant + menu on step 2
+    // Load restaurant + menu
     useEffect(() => {
-        if (step !== 'menu') return
-        setLoadingMenu(true)
+        if (!restaurantId) return
         const supabase = createClient()
-        Promise.all([
-            supabase.from('restaurants').select('id,name_kk,name_ru,working_hours').eq('id', restaurantId).single(),
-            supabase.from('menu_items').select('id,name_kk,name_ru,price,image_url,is_available,category_id').eq('restaurant_id', restaurantId).eq('is_available', true).order('sort_order'),
-        ]).then(([{ data: rest }, { data: items }]) => {
-            setRestaurant(rest)
+
+        const fetchSettings = async () => {
+            const { data: rest } = await supabase
+                .from('restaurants')
+                .select('id,name_kk,name_ru,phone,working_hours,is_booking_enabled,booking_accept_cash,booking_accept_kaspi,booking_accept_freedom')
+                .eq('id', restaurantId)
+                .single()
+            if (rest) {
+                setRestaurant(rest)
+                // Set default payment method if none selected
+                setPaymentMethod(prev => {
+                    if (prev) return prev
+                    if (rest.booking_accept_kaspi) return 'kaspi'
+                    if (rest.booking_accept_cash) return 'cash'
+                    if (rest.booking_accept_freedom) return 'freedom'
+                    return null
+                })
+            }
+        }
+
+        const fetchMenu = async () => {
+            if (step !== 'menu') return
+            setLoadingMenu(true)
+            const { data: items } = await supabase
+                .from('menu_items')
+                .select('id,name_kk,name_ru,price,image_url,is_available,category_id')
+                .eq('restaurant_id', restaurantId)
+                .eq('is_available', true)
+                .order('sort_order')
             setMenuItems(items || [])
             setLoadingMenu(false)
-        })
+        }
+
+        fetchSettings()
+        fetchMenu()
+
+        // Real-time updates for restaurant settings
+        const channel = supabase
+            .channel(`restaurant-booking-settings-all-${restaurantId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'restaurants',
+                filter: `id=eq.${restaurantId}`
+            }, fetchSettings)
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [restaurantId, step])
+
+    // Fetch tables
+    useEffect(() => {
+        if (step !== 'tables') return
+        setLoadingTables(true)
+        const supabase = createClient()
+        supabase
+            .from('restaurant_tables')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .then(({ data, error }) => {
+                if (!error && data) {
+                    setTables(data)
+                }
+                setLoadingTables(false)
+            })
     }, [step, restaurantId])
+
+    // Fetch busy slots
+    useEffect(() => {
+        if (!selectedTableId || !selectedDate) return
+        setLoadingSlots(true)
+        const supabase = createClient()
+        supabase
+            .from('reservations')
+            .select('time')
+            .eq('table_id', selectedTableId)
+            .eq('date', selectedDate)
+            .not('status', 'eq', 'cancelled')
+            .then(({ data, error }) => {
+                if (!error && data) {
+                    setBusySlots(data.map(r => r.time))
+                }
+                setLoadingSlots(false)
+            })
+    }, [selectedTableId, selectedDate])
 
     function handleAddToCart(item: MenuItem) {
         addToBookingCart({
@@ -139,6 +239,10 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
             toast.error('Аты-жөн мен телефон нөмірін енгізіңіз')
             return
         }
+        if (!paymentMethod) {
+            toast.error('Төлем әдісін таңдаңыз')
+            return
+        }
         setSubmitting(true)
         try {
             const res = await fetch('/api/reservations', {
@@ -151,6 +255,8 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                     date: selectedDate,
                     time: selectedTime,
                     guests_count: guests,
+                    table_id: selectedTableId,
+                    payment_method: paymentMethod,
                     notes,
                     items: bookingCart.map(i => ({
                         menu_item_id: i.menu_item_id,
@@ -164,9 +270,51 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
             const json = await res.json()
             if (!res.ok) throw new Error(json.error || 'Қате')
 
+            setReservationId(json.reservation.id)
+
+            if (paymentMethod === 'freedom') {
+                const payRes = await fetch('/api/payment/init', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reservationId: json.reservation.id,
+                        amount: bookingTotal,
+                        description: `Брондау #${json.reservation.id.slice(0, 8)}`,
+                        customerPhone: customerPhone
+                    })
+                })
+                const payData = await payRes.json()
+                if (payData.redirectUrl) {
+                    clearBookingCart()
+                    window.location.href = payData.redirectUrl
+                    return
+                }
+            }
+
+            if (paymentMethod === 'kaspi' && restaurant?.phone) {
+                const tableNum = tables.find(t => t.id === selectedTableId)?.table_number || ''
+                const menuSummary = bookingCart.map(i => `- ${i.name_ru || i.name_kk} x${i.quantity} (${(i.price * i.quantity).toLocaleString()}₸)`).join('\n')
+
+                const message = `Сәлем! Жаңа брондау #${json.reservation.id.slice(0, 8)}\n` +
+                    `Аты: ${customerName}\n` +
+                    `Тел: ${customerPhone}\n` +
+                    `Уақыты: ${selectedDate} ${selectedTime}\n` +
+                    `Адам саны: ${guests}\n` +
+                    (tableNum ? `Үстел: №${tableNum}\n` : '') +
+                    (menuSummary ? `Тапсырыс:\n${menuSummary}\n` : '') +
+                    `Жиыны: ${bookingTotal.toLocaleString()}₸\n` +
+                    `Төлем әдісі: Kaspi.kz`;
+
+                const waPhone = restaurant.phone.replace(/\D/g, '');
+                const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+
+                clearBookingCart()
+                window.location.href = waUrl;
+                return;
+            }
+
             clearBookingCart()
-            toast.success('Брондалды! Кафе сізбен байланысады 🎉')
-            router.push(`/restaurant/${restaurantId}`)
+            setStep('status')
         } catch (e: any) {
             toast.error(e.message)
         } finally {
@@ -181,30 +329,93 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
             <Header title="Орын брондау" />
 
             {/* Step indicator */}
-            <div className="flex items-center gap-0 px-6 py-4 bg-card border-b border-border">
-                {(['datetime', 'menu', 'confirm'] as Step[]).map((s, i) => (
-                    <div key={s} className="flex items-center flex-1">
+            <div className="flex items-center gap-0 px-4 sm:px-6 py-4 bg-card border-b border-border sticky top-0 z-50">
+                {STEPS.map((s, i) => (
+                    <div key={s} className={cn("flex items-center", i < STEPS.length - 1 ? "flex-1" : "flex-none")}>
                         <div className={cn(
-                            'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all',
-                            step === s ? 'bg-primary text-primary-foreground scale-110' :
+                            'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 transition-all',
+                            step === s ? 'bg-primary text-primary-foreground scale-110 shadow-lg shadow-primary/20' :
                                 STEPS.indexOf(step) > i ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
                         )}>
                             {STEPS.indexOf(step) > i ? <CheckCircle className="w-4 h-4" /> : i + 1}
                         </div>
-                        {i < 2 && <div className={cn('flex-1 h-0.5 mx-1', STEPS.indexOf(step) > i ? 'bg-primary/40' : 'bg-muted')} />}
+                        {i < STEPS.length - 1 && <div className={cn('flex-1 h-0.5 mx-1 sm:mx-2 min-w-[10px]', STEPS.indexOf(step) > i ? 'bg-primary/40' : 'bg-muted')} />}
                     </div>
                 ))}
             </div>
 
             <main className="flex-1 overflow-auto">
 
-                {/* ═══════════════ ҚАДАМ 1: Күн/Уақыт/Адам ═══════════════ */}
+                {/* ═══════════════ ҚАДАМ 0: Үстел таңдау ═══════════════ */}
+                {step === 'tables' && (
+                    <div className="px-4 py-6 space-y-6">
+                        {/* Артқа батырма */}
+                        <button
+                            onClick={() => router.back()}
+                            className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4 w-fit"
+                        >
+                            <ArrowLeft className="w-4 h-4" /> Ресторанға қайту
+                        </button>
+
+                        <div>
+                            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">
+                                Үстелді таңдаңыз
+                            </h2>
+                            {loadingTables ? (
+                                <div className="flex justify-center py-12">
+                                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                                </div>
+                            ) : tables.length === 0 ? (
+                                <div className="text-center py-12 text-muted-foreground">
+                                    <p>Ешқандай үстел табылмады</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {tables.map(table => (
+                                        <button
+                                            key={table.id}
+                                            onClick={() => setSelectedTableId(table.id)}
+                                            className={cn(
+                                                'flex flex-col items-center gap-2 p-5 rounded-3xl border-2 transition-all text-center',
+                                                selectedTableId === table.id
+                                                    ? 'bg-primary/5 border-primary shadow-lg shadow-primary/10'
+                                                    : 'bg-card border-transparent hover:border-border'
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                'w-12 h-12 rounded-2xl flex items-center justify-center mb-1 text-2xl',
+                                                selectedTableId === table.id ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                                            )}>
+                                                🪑
+                                            </div>
+                                            <p className="font-bold text-lg">№{table.table_number}</p>
+                                            <p className="text-xs text-muted-foreground">{table.capacity} адамдық</p>
+                                            {selectedTableId === table.id && (
+                                                <Badge className="absolute top-2 right-2 p-0.5 bg-primary text-white">
+                                                    <CheckCircle className="w-4 h-4" />
+                                                </Badge>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <Button
+                            className="w-full h-14 text-base font-bold rounded-2xl"
+                            disabled={!selectedTableId}
+                            onClick={() => setStep('datetime')}
+                        >
+                            Келесі — Уақыт таңдау <ArrowRight className="w-5 h-5 ml-2" />
+                        </Button>
+                    </div>
+                )}
                 {step === 'datetime' && (
                     <div className="px-4 py-6 space-y-6">
                         {/* Артқа батырма */}
                         <button
                             onClick={() => router.back()}
-                            className="flex items-center gap-1.5 text-sm text-muted-foreground -mb-2"
+                            className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4 w-fit"
                         >
                             <ArrowLeft className="w-4 h-4" /> Рестораннға қайту
                         </button>
@@ -222,19 +433,22 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                                             key={d}
                                             onClick={() => setSelectedDate(d)}
                                             className={cn(
-                                                'shrink-0 flex flex-col items-center w-14 py-3 rounded-2xl border transition-all',
+                                                'shrink-0 flex flex-col items-center w-[72px] py-4 rounded-2xl border transition-all',
                                                 selectedDate === d
                                                     ? 'bg-primary text-primary-foreground border-primary'
-                                                    : 'bg-card border-border text-foreground'
+                                                    : 'bg-card border-border text-foreground hover:bg-muted/50'
                                             )}
                                         >
-                                            <span className="text-[10px] font-medium opacity-70">{day}</span>
-                                            <span className="text-lg font-bold">{date}</span>
-                                            <span className="text-[10px] opacity-70">{month}</span>
+                                            <span className="text-[10px] font-bold uppercase opacity-80 mb-1">{day}</span>
+                                            <span className="text-xl font-bold leading-none mb-1">{date}</span>
+                                            <span className="text-[10px] font-medium opacity-80">{month}</span>
                                             {today && (
-                                                <span className={cn('text-[9px] font-bold mt-0.5', selectedDate === d ? 'text-primary-foreground/70' : 'text-primary')}>
+                                                <div className={cn(
+                                                    'mt-2 px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter',
+                                                    selectedDate === d ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                                                )}>
                                                     Бүгін
-                                                </span>
+                                                </div>
                                             )}
                                         </button>
                                     )
@@ -248,20 +462,26 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                                 Уақытты таңдаңыз
                             </h2>
                             <div className="grid grid-cols-4 gap-2">
-                                {TIME_SLOTS.map(t => (
-                                    <button
-                                        key={t}
-                                        onClick={() => setSelectedTime(t)}
-                                        className={cn(
-                                            'py-2.5 rounded-xl text-sm font-medium border transition-all',
-                                            selectedTime === t
-                                                ? 'bg-primary text-primary-foreground border-primary'
-                                                : 'bg-card border-border text-foreground'
-                                        )}
-                                    >
-                                        {t}
-                                    </button>
-                                ))}
+                                {TIME_SLOTS.map(t => {
+                                    const isBusy = busySlots.includes(t)
+                                    return (
+                                        <button
+                                            key={t}
+                                            disabled={isBusy}
+                                            onClick={() => setSelectedTime(t)}
+                                            className={cn(
+                                                'py-2.5 rounded-xl text-sm font-medium border transition-all',
+                                                selectedTime === t
+                                                    ? 'bg-primary text-primary-foreground border-primary'
+                                                    : 'bg-card border-border text-foreground',
+                                                isBusy && 'opacity-30 grayscale cursor-not-allowed'
+                                            )}
+                                        >
+                                            {t}
+                                            {isBusy && <span className="block text-[8px] font-bold mt-0.5">Бос емес</span>}
+                                        </button>
+                                    )
+                                })}
                             </div>
                         </div>
 
@@ -452,20 +672,215 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                             />
                         </div>
 
-                        <Button
-                            className="w-full h-14 text-base font-bold rounded-2xl mt-4"
-                            disabled={submitting || !customerName.trim() || !customerPhone.trim()}
-                            onClick={handleSubmit}
-                        >
-                            {submitting ? (
-                                <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Жіберілуде...</>
-                            ) : (
-                                <><CheckCircle className="w-5 h-5 mr-2" /> Брондауды растау</>
-                            )}
-                        </Button>
+                        {/* Төлем әдісі */}
+                        <div className="space-y-3">
+                            <h2 className="font-bold text-foreground">Төлем әдісі</h2>
+                            <div className="grid grid-cols-1 gap-2">
+                                {[
+                                    { id: 'kaspi', label: 'Kaspi.kz', icon: '💰', desc: 'Kaspi.kz қосымшасы арқылы', enabled: restaurant?.booking_accept_kaspi },
+                                    { id: 'cash', label: 'Қолма-қол', icon: '💵', desc: 'Кафеде төлеу', enabled: restaurant?.booking_accept_cash },
+                                    { id: 'freedom', label: 'Freedom Pay', icon: '💳', desc: 'Банк картасымен онлайн', enabled: restaurant?.booking_accept_freedom },
+                                ].filter(m => {
+                                    if (!restaurant) return true
+                                    return m.enabled !== false
+                                }).map((m) => (
+                                    <button
+                                        key={m.id}
+                                        onClick={() => setPaymentMethod(m.id as any)}
+                                        className={cn(
+                                            "flex items-center gap-4 p-4 rounded-2xl border transition-all text-left shadow-sm bg-card",
+                                            paymentMethod === m.id ? "border-primary ring-1 ring-primary" : "border-transparent"
+                                        )}
+                                    >
+                                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl shrink-0">{m.icon}</div>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-sm">{m.label}</p>
+                                            <p className="text-[10px] text-muted-foreground">{m.desc}</p>
+                                        </div>
+                                        {paymentMethod === m.id && <CheckCircle className="w-5 h-5 text-primary" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                     </div>
                 )}
+
+                {/* ═══════════════ ҚАДАМ 4: Статус ═══════════════ */}
+                {step === 'status' && reservationId && (
+                    <ReservationStatusView
+                        reservationId={reservationId}
+                        restaurantId={restaurantId}
+                    />
+                )}
             </main>
+        </div>
+    )
+}
+
+function ReservationStatusView({ reservationId, restaurantId }: { reservationId: string, restaurantId: string }) {
+    const router = useRouter()
+    const [reservation, setReservation] = useState<any>(null)
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        const supabase = createClient()
+
+        const fetchRes = async () => {
+            const { data } = await supabase
+                .from('reservations')
+                .select('*, restaurants!restaurant_id (*)')
+                .eq('id', reservationId)
+                .single()
+            if (data) setReservation(data)
+            setLoading(false)
+        }
+
+        fetchRes()
+
+        const channel = supabase
+            .channel(`reservation-${reservationId}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'reservations', filter: `id=eq.${reservationId}` }, (payload) => {
+                setReservation((prev: any) => ({ ...prev, ...payload.new }))
+                if (payload.new.status === 'confirmed') {
+                    toast.success('Брондауыңыз расталды! 🎉')
+                }
+            })
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+    }, [reservationId])
+
+    if (loading || !reservation) {
+        return (
+            <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+                <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
+                <p className="text-muted-foreground font-medium">Мәліметтерді жүктеуде...</p>
+            </div>
+        )
+    }
+
+    const statuses = [
+        { key: 'pending', label: 'Өтінім жіберілді', icon: <Clock className="w-5 h-5" />, desc: 'Кафе өтініміңізді қарауда' },
+        { key: 'awaiting_payment', label: 'Төлем күтілуде', icon: <ShoppingCart className="w-5 h-5" />, desc: 'Брондау үшін төлем жасаңыз' },
+        { key: 'confirmed', label: 'Расталды', icon: <CheckCircle className="w-5 h-5" />, desc: 'Сізді кафеде күтеміз!' },
+        { key: 'completed', label: 'Аяқталды', icon: <CheckCircle className="w-5 h-5" />, desc: 'Асыңыз дәмді болсын!' }
+    ]
+
+    const currentIndex = statuses.findIndex(s => s.key === reservation.status)
+    const activeStatus = statuses[currentIndex] || statuses[0]
+
+    return (
+        <div className="px-4 py-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Status Header */}
+            <div className="text-center space-y-2">
+                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary animate-bounce">
+                    {activeStatus.icon}
+                </div>
+                <h1 className="text-2xl font-black">{activeStatus.label}</h1>
+                <p className="text-muted-foreground text-sm max-w-xs mx-auto">{activeStatus.desc}</p>
+            </div>
+
+            {/* Stepper view like delivery */}
+            <div className="bg-card rounded-3xl border border-border p-5 sm:p-6 shadow-sm">
+                <div className="relative space-y-6 sm:space-y-8">
+                    {/* Line */}
+                    <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-muted" />
+
+                    {statuses.map((s, i) => (
+                        <div key={s.key} className="flex items-start gap-4 relative z-10">
+                            <div className={cn(
+                                "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all border-2",
+                                i <= currentIndex
+                                    ? "bg-primary border-primary text-primary-foreground shadow-lg shadow-primary/20 scale-110"
+                                    : "bg-background border-muted text-muted-foreground"
+                            )}>
+                                {i < currentIndex ? "✓" : i + 1}
+                            </div>
+                            <div className="flex-1 -mt-0.5">
+                                <p className={cn(
+                                    "font-bold text-sm transition-colors",
+                                    i <= currentIndex ? "text-foreground" : "text-muted-foreground"
+                                )}>
+                                    {s.label}
+                                </p>
+                                {i === currentIndex && (
+                                    <p className="text-[10px] text-muted-foreground mt-0.5 italic">Орындалуда...</p>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Payment URL (if awaiting_payment) */}
+            {reservation.status === 'awaiting_payment' && reservation.payment_url && (
+                <div className="bg-orange-50 dark:bg-orange-950/20 rounded-3xl p-6 border-2 border-orange-200 dark:border-orange-900 shadow-xl animate-in zoom-in-95 duration-300">
+                    <div className="flex items-start gap-4 mb-4">
+                        <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg">
+                            <ShoppingCart className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <p className="font-bold text-orange-900 dark:text-orange-200">Төлем қажет</p>
+                            <p className="text-xs text-orange-700/80 dark:text-orange-400 font-medium">Брондауды бекіту үшін төлем жасаңыз</p>
+                        </div>
+                    </div>
+                    <Button
+                        className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-95"
+                        onClick={() => window.open(reservation.payment_url, '_blank')}
+                    >
+                        Төлеу — {Number(reservation.total_amount).toLocaleString()} ₸
+                    </Button>
+                </div>
+            )}
+
+            {/* Reservation Summary */}
+            <div className="bg-muted/40 rounded-3xl p-5 space-y-4">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground ml-1">Мәліметтер</h3>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-card p-3 rounded-2xl border border-border/50">
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Күні</p>
+                        <p className="font-bold text-sm tracking-tight">{reservation.date}</p>
+                    </div>
+                    <div className="bg-card p-3 rounded-2xl border border-border/50">
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Уақыты</p>
+                        <p className="font-bold text-sm tracking-tight">{reservation.time.slice(0, 5)}</p>
+                    </div>
+                    <div className="bg-card p-3 rounded-2xl border border-border/50">
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Қонақтар</p>
+                        <p className="font-bold text-sm tracking-tight">{reservation.guests_count} адам</p>
+                    </div>
+                    <div className="bg-card p-3 rounded-2xl border border-border/50">
+                        <p className="text-[10px] text-muted-foreground mb-0.5">ID</p>
+                        <p className="font-bold text-[10px] tracking-tight truncate">#{reservation.id.slice(0, 8)}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Support button */}
+            <div className="pt-2">
+                <Button
+                    variant="outline"
+                    className="w-full h-14 rounded-2xl border-emerald-100 flex items-center justify-center gap-3 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold shadow-sm transition-all active:scale-95"
+                    onClick={() => {
+                        const phone = reservation.restaurants?.phone?.replace(/\D/g, '') || '77771234567'
+                        window.open(`https://wa.me/${phone}`, '_blank')
+                    }}
+                >
+                    <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white">
+                        <Phone className="w-4 h-4" />
+                    </div>
+                    WhatsApp қолдау
+                </Button>
+            </div>
+
+            <Button
+                variant="ghost"
+                className="w-full text-muted-foreground font-bold hover:text-foreground"
+                onClick={() => router.push(`/restaurant/${restaurantId}`)}
+            >
+                Ресторанға қайту
+            </Button>
         </div>
     )
 }

@@ -56,8 +56,8 @@ export function OrderRating({
             setSubmitted(true)
             toast.success(t.orders.reviewThanksToast)
         } catch (error: any) {
-            console.error('Error submitting review:', error)
-            toast.error(t.cart.order_error + error.message)
+            console.error('Error submitting review:', JSON.stringify(error, null, 2))
+            toast.error(t.cart.order_error + (error.message || 'Unknown error'))
         } finally {
             setIsSubmitting(false)
         }

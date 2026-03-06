@@ -1,5 +1,4 @@
 import { Header } from '@/components/layout/header'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import Link from 'next/link'
 import { SearchBar } from '@/components/home/search-bar'
 import { RestaurantSection } from '@/components/home/restaurant-section'
@@ -84,7 +83,6 @@ export default async function RestaurantsPage({
             )}
           </div>
         </main>
-        <BottomNav />
       </div>
     )
   }
@@ -205,7 +203,6 @@ export default async function RestaurantsPage({
         </div>
       </main>
 
-      <BottomNav />
     </div>
   )
 }

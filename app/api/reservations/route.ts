@@ -11,6 +11,8 @@ export async function POST(req: Request) {
             date,
             time,
             guests_count,
+            table_id,
+            payment_method,
             notes,
             items = [],
         } = body
@@ -37,9 +39,12 @@ export async function POST(req: Request) {
                 date,
                 time,
                 guests_count,
+                table_id: table_id || null,
+                payment_method: payment_method || 'cash',
                 notes: notes || null,
                 total_amount,
                 status: 'pending',
+                payment_status: 'pending'
             })
             .select()
             .single()

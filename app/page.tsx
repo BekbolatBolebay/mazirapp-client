@@ -1,5 +1,4 @@
 import { Header } from '@/components/layout/header'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import { SearchBar } from '@/components/home/search-bar'
 import { PromotionBanner } from '@/components/home/promotion-banner'
 import { CategoryGrid } from '@/components/home/category-grid'
@@ -63,7 +62,6 @@ export default async function HomePage() {
         </div>
       </main>
 
-      <BottomNav />
     </div>
   )
 }

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/header'
-import { BottomNav } from '@/components/layout/bottom-nav'
 import { CartList } from '@/components/cart/cart-list'
 import { CartSummary } from '@/components/cart/cart-summary'
 import { useLocalCart } from '@/hooks/use-local-cart'
@@ -104,17 +103,34 @@ export default function CartPage() {
   const cartItems = useLocalCart()
   const [tab, setTab] = useState<Tab>('food')
   const [bookingCount, setBookingCount] = useState(0)
+  const [deliveryFee, setDeliveryFee] = useState(500)
 
   useEffect(() => {
     const update = () => setBookingCount(getBookingCart().reduce((s, i) => s + i.quantity, 0))
     update()
     window.addEventListener('bookingCartUpdated', update)
+
+    // Fetch delivery fee if cart has items
+    if (cartItems.length > 0) {
+      import('@/lib/supabase/client').then(({ createClient }) => {
+        const supabase = createClient()
+        supabase
+          .from('restaurants')
+          .select('delivery_fee')
+          .eq('id', cartItems[0].restaurant_id)
+          .single()
+          .then(({ data }) => {
+            if (data) setDeliveryFee(data.delivery_fee)
+          })
+      })
+    }
+
     return () => window.removeEventListener('bookingCartUpdated', update)
-  }, [])
+  }, [cartItems.length])
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.menu_item.price * item.quantity, 0)
-  const deliveryFee = cartItems.length > 0 ? 500 : 0
-  const total = subtotal + deliveryFee
+  const actualDeliveryFee = cartItems.length > 0 ? deliveryFee : 0
+  const total = subtotal + actualDeliveryFee
   const foodCount = cartItems.reduce((s, i) => s + i.quantity, 0)
 
   return (
@@ -170,7 +186,7 @@ export default function CartPage() {
                   <CartList items={cartItems} />
                   <CartSummary
                     subtotal={subtotal}
-                    deliveryFee={deliveryFee}
+                    deliveryFee={actualDeliveryFee}
                     total={total}
                     restaurantId={cartItems[0].restaurant_id}
                     items={cartItems}
@@ -191,7 +207,6 @@ export default function CartPage() {
         </div>
       </main>
 
-      <BottomNav />
     </div>
   )
 }

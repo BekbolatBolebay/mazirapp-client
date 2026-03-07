@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '@/components/layout/header'
 import { BottomNav } from '@/components/layout/bottom-nav'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
     Calendar, Clock, Users, ChefHat, Minus, Plus, Trash2,
-    CheckCircle, ArrowLeft, ArrowRight, Loader2, ShoppingCart, Phone, User
+    CheckCircle, ArrowLeft, ArrowRight, Loader2, ShoppingCart, Phone, User, X, ChevronRight
 } from 'lucide-react'
 import {
     getBookingCart, addToBookingCart, updateBookingCartQuantity,
@@ -107,6 +108,7 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
     const [notes, setNotes] = useState('')
     const [submitting, setSubmitting] = useState(false)
     const [reservationId, setReservationId] = useState<string | null>(null)
+    const [isTimePickerOpen, setIsTimePickerOpen] = useState(false)
 
     // Booking cart sync
     useEffect(() => {
@@ -461,28 +463,109 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                             <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">
                                 Уақытты таңдаңыз
                             </h2>
-                            <div className="grid grid-cols-4 gap-2">
-                                {TIME_SLOTS.map(t => {
-                                    const isBusy = busySlots.includes(t)
-                                    return (
-                                        <button
-                                            key={t}
-                                            disabled={isBusy}
-                                            onClick={() => setSelectedTime(t)}
-                                            className={cn(
-                                                'py-2.5 rounded-xl text-sm font-medium border transition-all',
-                                                selectedTime === t
-                                                    ? 'bg-primary text-primary-foreground border-primary'
-                                                    : 'bg-card border-border text-foreground',
-                                                isBusy && 'opacity-30 grayscale cursor-not-allowed'
-                                            )}
+
+                            <button
+                                onClick={() => setIsTimePickerOpen(true)}
+                                className={cn(
+                                    "w-full h-16 rounded-2xl border-2 flex items-center justify-between px-6 transition-all active:scale-[0.98]",
+                                    selectedTime
+                                        ? "bg-primary/5 border-primary shadow-lg shadow-primary/5"
+                                        : "bg-card border-border hover:border-muted-foreground/20"
+                                )}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={cn(
+                                        "w-10 h-10 rounded-xl flex items-center justify-center",
+                                        selectedTime ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                    )}>
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">Уақыт</p>
+                                        <p className="font-black text-lg">
+                                            {selectedTime || "Таңдалмады"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                </div>
+                            </button>
+
+                            {/* Time Picker Modal */}
+                            <AnimatePresence>
+                                {isTimePickerOpen && (
+                                    <>
+                                        <motion.div
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            onClick={() => setIsTimePickerOpen(false)}
+                                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+                                        />
+                                        <motion.div
+                                            initial={{ y: "100%" }}
+                                            animate={{ y: 0 }}
+                                            exit={{ y: "100%" }}
+                                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                            className="fixed bottom-0 left-0 right-0 bg-background rounded-t-[2.5rem] z-[101] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden shadow-black/20"
                                         >
-                                            {t}
-                                            {isBusy && <span className="block text-[8px] font-bold mt-0.5">Бос емес</span>}
-                                        </button>
-                                    )
-                                })}
-                            </div>
+                                            <div className="p-4 flex flex-col items-center">
+                                                <div className="w-12 h-1.5 bg-muted rounded-full mb-6" />
+                                                <div className="w-full px-4 flex justify-between items-center mb-6">
+                                                    <h3 className="text-xl font-black">Уақытты таңдаңыз</h3>
+                                                    <button
+                                                        onClick={() => setIsTimePickerOpen(false)}
+                                                        className="p-2 bg-muted rounded-full hover:bg-muted/80 transition-colors"
+                                                    >
+                                                        <X className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="overflow-y-auto px-6 pb-12 space-y-8 custom-scrollbar">
+                                                {/* Group slots by hour for better organization */}
+                                                {Array.from({ length: 13 }, (_, i) => i + 9).map(hour => {
+                                                    const hourStr = hour.toString().padStart(2, '0');
+                                                    const slots = TIME_SLOTS.filter(s => s.startsWith(hourStr));
+                                                    if (slots.length === 0) return null;
+
+                                                    return (
+                                                        <div key={hourStr} className="space-y-3">
+                                                            <p className="text-xs font-black text-muted-foreground/60 uppercase tracking-widest ml-1">{hourStr}:00 - {hourStr}:59</p>
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                {slots.map(t => {
+                                                                    const isBusy = busySlots.includes(t);
+                                                                    return (
+                                                                        <button
+                                                                            key={t}
+                                                                            disabled={isBusy}
+                                                                            onClick={() => {
+                                                                                setSelectedTime(t);
+                                                                                setIsTimePickerOpen(false);
+                                                                            }}
+                                                                            className={cn(
+                                                                                "h-14 rounded-2xl text-base font-bold transition-all border-2 flex items-center justify-center gap-2",
+                                                                                selectedTime === t
+                                                                                    ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20"
+                                                                                    : "bg-card border-border hover:border-primary/30",
+                                                                                isBusy && "opacity-30 grayscale cursor-not-allowed bg-muted border-transparent"
+                                                                            )}
+                                                                        >
+                                                                            <Clock className="w-4 h-4 opacity-70" />
+                                                                            {t}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
                         </div>
 
                         {/* Адам саны */}
@@ -598,7 +681,7 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                                 </div>
                             )}
                             <Button
-                                className="w-full h-14 text-base font-bold rounded-2xl"
+                                className="w-full h-14 text-base font-bold rounded-2xl shadow-xl shadow-primary/10 transition-all active:scale-[0.98]"
                                 onClick={() => setStep('confirm')}
                             >
                                 Келесі — Растау <ArrowRight className="w-5 h-5 ml-2" />
@@ -609,7 +692,7 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
 
                 {/* ═══════════════ ҚАДАМ 3: Растау ═══════════════ */}
                 {step === 'confirm' && (
-                    <div className="px-4 py-6 space-y-4">
+                    <div className="px-4 py-6 space-y-6">
                         <button onClick={() => setStep('menu')} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                             <ArrowLeft className="w-4 h-4" /> Артқа
                         </button>
@@ -682,25 +765,66 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                                     { id: 'freedom', label: 'Freedom Pay', icon: '💳', desc: 'Банк картасымен онлайн', enabled: restaurant?.booking_accept_freedom },
                                 ].filter(m => {
                                     if (!restaurant) return true
-                                    return m.enabled !== false
+                                    return m.enabled === true
                                 }).map((m) => (
                                     <button
                                         key={m.id}
                                         onClick={() => setPaymentMethod(m.id as any)}
                                         className={cn(
-                                            "flex items-center gap-4 p-4 rounded-2xl border transition-all text-left shadow-sm bg-card",
-                                            paymentMethod === m.id ? "border-primary ring-1 ring-primary" : "border-transparent"
+                                            "flex items-center gap-4 p-5 rounded-[2rem] border-2 transition-all text-left bg-card relative overflow-hidden group",
+                                            paymentMethod === m.id
+                                                ? "border-primary bg-primary/[0.03] shadow-xl shadow-primary/5"
+                                                : "border-border/50 hover:border-primary/20 hover:bg-muted/30"
                                         )}
                                     >
-                                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl shrink-0">{m.icon}</div>
-                                        <div className="flex-1">
-                                            <p className="font-bold text-sm">{m.label}</p>
-                                            <p className="text-[10px] text-muted-foreground">{m.desc}</p>
+                                        <div className={cn(
+                                            "w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0 transition-all shadow-sm",
+                                            paymentMethod === m.id ? "bg-primary text-primary-foreground scale-110" : "bg-muted"
+                                        )}>
+                                            {m.id === 'kaspi' ? '💰' : m.id === 'cash' ? '💵' : '💳'}
                                         </div>
-                                        {paymentMethod === m.id && <CheckCircle className="w-5 h-5 text-primary" />}
+                                        <div className="flex-1 min-w-0">
+                                            <p className={cn(
+                                                "font-black text-base transition-colors",
+                                                paymentMethod === m.id ? "text-primary" : "text-foreground"
+                                            )}>{m.label}</p>
+                                            <p className="text-[11px] text-muted-foreground font-medium leading-relaxed">{m.desc}</p>
+                                        </div>
+                                        <div className={cn(
+                                            "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+                                            paymentMethod === m.id ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" : "border-muted-foreground/30"
+                                        )}>
+                                            {paymentMethod === m.id && <CheckCircle className="w-4 h-4 text-primary-foreground" />}
+                                        </div>
+
+                                        {/* Subtle highlight effect */}
+                                        {paymentMethod === m.id && (
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 -mr-12 -mt-12 rounded-full blur-2xl" />
+                                        )}
                                     </button>
                                 ))}
                             </div>
+                        </div>
+
+                        {/* Final Submit Button */}
+                        <div className="pt-4">
+                            <Button
+                                disabled={submitting}
+                                onClick={handleSubmit}
+                                className="w-full h-16 text-lg font-black rounded-3xl bg-primary text-primary-foreground shadow-2xl shadow-primary/30 hover:bg-primary/95 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+                            >
+                                {submitting ? (
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                ) : (
+                                    <>
+                                        {paymentMethod === 'freedom' ? 'Төлеу' : 'Растау және брондау'}
+                                        <ArrowRight className="w-6 h-6" />
+                                    </>
+                                )}
+                            </Button>
+                            <p className="text-[10px] text-center text-muted-foreground mt-4 px-6 italic">
+                                "Брондау" батырмасын басу арқылы сіз кафе ережелерімен келісесіз
+                            </p>
                         </div>
 
                     </div>

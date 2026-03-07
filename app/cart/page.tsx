@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Header } from '@/components/layout/header'
 import { CartList } from '@/components/cart/cart-list'
 import { CartSummary } from '@/components/cart/cart-summary'
@@ -94,6 +95,15 @@ function BookingCartSection() {
           {t.cart.pre_order_summary_desc}
         </p>
       </div>
+
+      {items.length > 0 && (
+        <Link
+          href={`/booking/${items[0].restaurant_id}`}
+          className="block w-full bg-primary text-primary-foreground text-center py-4 rounded-2xl font-bold shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+        >
+          {t.cart.continue_label}
+        </Link>
+      )}
     </div>
   )
 }

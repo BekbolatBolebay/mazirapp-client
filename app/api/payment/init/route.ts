@@ -59,8 +59,21 @@ export async function POST(req: Request) {
         const merchantId = restaurant.freedom_merchant_id
         const secretKey = restaurant.freedom_secret_key
 
+        console.log('Payment Init Debug - Merchant ID:', merchantId ? 'Present' : 'MISSING')
+        console.log('Payment Init Debug - Secret Key:', secretKey ? 'Present' : 'MISSING')
+
+        // MOCK MODE: If credentials are missing, allow testing via a mock redirect
         if (!merchantId || !secretKey) {
-            return NextResponse.json({ error: 'Freedom Pay credentials not configured for this restaurant' }, { status: 400 })
+            console.warn('⚠️ Freedom Pay credentials missing. ENTERING MOCK MODE for testing.');
+
+            // Generate a mock card entry URL to show the user the "card registration/entry" form
+            const mockCardUrl = `/checkout/mock-card?orderId=${orderId}&amount=${amount}`;
+
+            return NextResponse.json({
+                redirectUrl: mockCardUrl,
+                isMock: true,
+                message: 'Testing mode: Redirecting to mock card entry form'
+            })
         }
 
         // 2. Prepare Freedom Pay parameters
@@ -72,6 +85,7 @@ export async function POST(req: Request) {
             pg_description: description || `Order #${orderId}`,
             pg_salt: Math.random().toString(36).substring(7),
             pg_language: 'ru',
+            pg_testing_mode: restaurant.freedom_test_mode ? 1 : 0,
             // Webhook and redirect URLs
             pg_result_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/webhook`,
             pg_success_url: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?status=success`,

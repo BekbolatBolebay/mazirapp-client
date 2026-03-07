@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { notifyAdminTelegram } from '@/lib/actions'
 import { useLocalCart } from '@/hooks/use-local-cart'
 import { clearLocalCart } from '@/lib/storage/local-storage'
 import { Header } from '@/components/layout/header'
@@ -14,6 +15,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { CheckCircle2, MapPin, CreditCard, Banknote, ArrowLeft, Map as MapIcon, Navigation, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 
 const MapPicker = dynamic(() => import('@/components/checkout/map-picker').then(mod => mod.MapPicker), {
@@ -47,7 +49,21 @@ export function CheckoutClient() {
     const [phone, setPhone] = useState('')
     const [address, setAddress] = useState('')
     const [notes, setNotes] = useState('')
-    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'kaspi' | 'freedom' | null>(null)
+    const [paymentMethod, setPaymentMethod] = useState<'kaspi' | 'freedom' | null>(null)
+
+    // Load persisted payment method
+    useEffect(() => {
+        const persisted = localStorage.getItem('last_payment_method')
+        if (persisted === 'kaspi' || persisted === 'freedom') {
+            setPaymentMethod(persisted)
+        }
+    }, [])
+
+    // Persist payment method
+    const handleSetPaymentMethod = (method: 'kaspi' | 'freedom') => {
+        setPaymentMethod(method)
+        localStorage.setItem('last_payment_method', method)
+    }
     const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'booking'>('delivery')
     const [tables, setTables] = useState<any[]>([])
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
@@ -111,11 +127,14 @@ export function CheckoutClient() {
                     if (data) {
                         setRestaurantSettings(data)
 
-                        // Set default payment method if none selected
+                        // Set default payment method if none selected correctly
                         setPaymentMethod(prev => {
                             if (prev) return prev
+                            const persisted = localStorage.getItem('last_payment_method')
+                            if (persisted === 'kaspi' && data.accept_kaspi) return 'kaspi'
+                            if (persisted === 'freedom' && data.accept_freedom) return 'freedom'
+
                             if (data.accept_kaspi) return 'kaspi'
-                            if (data.accept_cash) return 'cash'
                             if (data.accept_freedom) return 'freedom'
                             return null
                         })
@@ -265,7 +284,7 @@ export function CheckoutClient() {
                     user_id: user.id,
                     restaurant_id: restaurantId,
                     cafe_id: restaurantId,
-                    status: 'new',
+                    status: paymentMethod === 'freedom' ? 'awaiting_payment' : 'new',
                     total_amount: orderType === 'delivery' ? total : subtotal,
                     delivery_fee: orderType === 'delivery' ? calculatedFee : 0,
                     delivery_address: orderType === 'delivery' ? address : null,
@@ -296,6 +315,19 @@ export function CheckoutClient() {
                 .insert(orderItems)
 
             if (itemsError) throw itemsError
+
+            // Notify Admin via Telegram
+            if (order.restaurant_id) {
+                const { data: restaurant } = await supabase
+                    .from('restaurants')
+                    .select('*')
+                    .eq('id', order.restaurant_id)
+                    .single()
+
+                if (restaurant) {
+                    await notifyAdminTelegram({ ...order, order_items: cartItems.map(item => ({ ...item, menu_items: item.menu_item })) }, restaurant)
+                }
+            }
 
             if (paymentMethod === 'freedom') {
                 const payRes = await fetch('/api/payment/init', {
@@ -346,6 +378,28 @@ export function CheckoutClient() {
 
     return (
         <div className="min-h-screen bg-muted/30 pb-20">
+            <AnimatePresence>
+                {loading && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center p-6 text-center"
+                    >
+                        <div className="w-20 h-20 relative mb-6">
+                            <div className="absolute inset-0 border-4 border-primary/20 rounded-full" />
+                            <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
+                        <h2 className="text-xl font-bold mb-2">
+                            {locale === 'kk' ? 'Төлем бетіне өту...' : 'Переходим к оплате...'}
+                        </h2>
+                        <p className="text-sm text-muted-foreground italic">
+                            {locale === 'kk' ? 'Бұл бірнеше секунд алуы мүмкін' : 'Это может занять несколько секунд'}
+                        </p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <Header
                 title={step === 'summary' ? t.cart.summary_title : t.cart.title}
                 backButton={true}
@@ -512,7 +566,7 @@ export function CheckoutClient() {
                             <div className="grid grid-cols-1 gap-2">
                                 {restaurantSettings?.accept_kaspi && (
                                     <button
-                                        onClick={() => setPaymentMethod('kaspi')}
+                                        onClick={() => handleSetPaymentMethod('kaspi')}
                                         className={cn(
                                             "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left bg-card",
                                             paymentMethod === 'kaspi' ? "border-primary ring-1 ring-primary" : "border-transparent"
@@ -525,24 +579,9 @@ export function CheckoutClient() {
                                         {paymentMethod === 'kaspi' && <CheckCircle2 className="w-5 h-5 text-primary" />}
                                     </button>
                                 )}
-                                {restaurantSettings?.accept_cash && (
-                                    <button
-                                        onClick={() => setPaymentMethod('cash')}
-                                        className={cn(
-                                            "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left bg-card",
-                                            paymentMethod === 'cash' ? "border-primary ring-1 ring-primary" : "border-transparent"
-                                        )}
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-xl shrink-0">💵</div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-bold">{t.cart.cash_label}</p>
-                                        </div>
-                                        {paymentMethod === 'cash' && <CheckCircle2 className="w-5 h-5 text-primary" />}
-                                    </button>
-                                )}
                                 {restaurantSettings?.accept_freedom && (
                                     <button
-                                        onClick={() => setPaymentMethod('freedom')}
+                                        onClick={() => handleSetPaymentMethod('freedom')}
                                         className={cn(
                                             "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left bg-card",
                                             paymentMethod === 'freedom' ? "border-primary ring-1 ring-primary" : "border-transparent"
@@ -550,7 +589,8 @@ export function CheckoutClient() {
                                     >
                                         <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-xl shrink-0">💳</div>
                                         <div className="flex-1">
-                                            <p className="text-sm font-bold">Freedom Pay</p>
+                                            <p className="text-sm font-bold">{locale === 'kk' ? 'Картамен төлеу' : 'Оплата картой'}</p>
+                                            <p className="text-[10px] text-muted-foreground">Visa, MasterCard, Maestro</p>
                                         </div>
                                         {paymentMethod === 'freedom' && <CheckCircle2 className="w-5 h-5 text-primary" />}
                                     </button>
@@ -624,7 +664,7 @@ export function CheckoutClient() {
                                             <div>
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">{t.cart.payment_method}</p>
                                                 <p className="text-sm font-bold">
-                                                    {paymentMethod === 'kaspi' ? 'Kaspi.kz' : (paymentMethod === 'freedom' ? 'Freedom Pay' : t.cart.cash_label)}
+                                                    {paymentMethod === 'kaspi' ? 'Kaspi.kz' : (paymentMethod === 'freedom' ? (locale === 'kk' ? 'Картамен төлеу' : 'Оплата картой') : '')}
                                                 </p>
                                             </div>
                                         </div>

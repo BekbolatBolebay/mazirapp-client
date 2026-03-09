@@ -14,9 +14,11 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n/i18n-context'
-import { CheckCircle2, MapPin, CreditCard, Banknote, ArrowLeft, Map as MapIcon, Navigation, Loader2 } from 'lucide-react'
+import { useAuth } from '@/lib/auth/auth-context'
+import { CheckCircle2, MapPin, CreditCard, Banknote, ArrowLeft, Map as MapIcon, Navigation, Loader2, Truck, ShoppingBag, Users, Wallet, Utensils, ShoppingCart } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
+import { CheckoutAuth } from '@/components/checkout/checkout-auth'
 
 const MapPicker = dynamic(() => import('@/components/checkout/map-picker').then(mod => mod.MapPicker), {
     ssr: false,
@@ -40,9 +42,17 @@ export function CheckoutClient() {
     const router = useRouter()
     const cartItems = useLocalCart()
     const { t, locale } = useI18n()
-    const [loading, setLoading] = useState(false)
+    const { user: authUser, loading: authLoading } = useAuth()
+    const [checkoutLoading, setCheckoutLoading] = useState(false)
     const [restaurantSettings, setRestaurantSettings] = useState<any>(null)
-    const [step, setStep] = useState<'form' | 'summary'>('form')
+    const [step, setStep] = useState<'auth' | 'form' | 'summary'>('auth')
+
+    // Redirect to form/summary if already logged in or after login
+    useEffect(() => {
+        if (authUser && step === 'auth') {
+            setStep('form')
+        }
+    }, [authUser, step])
 
     // Form state
     const [name, setName] = useState('')
@@ -226,7 +236,7 @@ export function CheckoutClient() {
     }
 
     const handleCheckout = async () => {
-        setLoading(true)
+        setCheckoutLoading(true)
         const supabase = createClient()
 
         try {
@@ -362,14 +372,16 @@ export function CheckoutClient() {
         } catch (error: any) {
             toast.error(t.cart.order_error + error.message)
         } finally {
-            setLoading(false)
+            setCheckoutLoading(false)
         }
     }
 
-    if (cartItems.length === 0 && !loading) {
+    if (cartItems.length === 0 && !checkoutLoading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
-                <div className="text-6xl mb-4">🛒</div>
+                <div className="text-muted-foreground/20 mb-6">
+                    <ShoppingCart className="w-20 h-20" />
+                </div>
                 <h2 className="text-xl font-bold mb-2">{t.cart.empty}</h2>
                 <Button onClick={() => router.push('/')}>{t.cart.go_home}</Button>
             </div>
@@ -379,7 +391,7 @@ export function CheckoutClient() {
     return (
         <div className="min-h-screen bg-muted/30 pb-20">
             <AnimatePresence>
-                {loading && (
+                {checkoutLoading && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -406,17 +418,19 @@ export function CheckoutClient() {
                 onBack={() => step === 'summary' ? setStep('form') : router.push('/cart')}
             />
 
-            <main className="max-w-screen-md mx-auto px-4 py-6 space-y-6">
-                {step === 'form' ? (
+            <main className="max-w-screen-md mx-auto px-4 py-6 space-y-6 pb-32">
+                {step === 'auth' ? (
+                    <CheckoutAuth onLogin={() => setStep('form')} />
+                ) : step === 'form' ? (
                     <>
                         {/* Service Type Selection */}
                         <section className="space-y-3">
                             <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider px-1">{t.cart.service_type}</h3>
                             <div className="grid grid-cols-3 gap-2">
                                 {[
-                                    { id: 'delivery', label: t.cart.delivery, icon: '🚚', enabled: restaurantSettings?.is_delivery_enabled !== false },
-                                    { id: 'pickup', label: t.cart.pickup, icon: '🥡', enabled: restaurantSettings?.is_pickup_enabled !== false },
-                                    { id: 'booking', label: t.cart.booking, icon: '🪑', enabled: restaurantSettings?.is_booking_enabled !== false },
+                                    { id: 'delivery', label: t.cart.delivery, icon: <Truck className="w-6 h-6" />, enabled: restaurantSettings?.is_delivery_enabled !== false },
+                                    { id: 'pickup', label: t.cart.pickup, icon: <ShoppingBag className="w-6 h-6" />, enabled: restaurantSettings?.is_pickup_enabled !== false },
+                                    { id: 'booking', label: t.cart.booking, icon: <Users className="w-6 h-6" />, enabled: restaurantSettings?.is_booking_enabled !== false },
                                 ].filter(s => s.enabled).map((s) => (
                                     <button
                                         key={s.id}
@@ -426,7 +440,7 @@ export function CheckoutClient() {
                                             orderType === s.id ? "bg-primary text-primary-foreground border-primary" : "bg-card border-transparent text-muted-foreground"
                                         )}
                                     >
-                                        <span className="text-2xl">{s.icon}</span>
+                                        {s.icon}
                                         <span className="text-[10px] font-bold">{s.label}</span>
                                     </button>
                                 ))}
@@ -572,7 +586,9 @@ export function CheckoutClient() {
                                             paymentMethod === 'kaspi' ? "border-primary ring-1 ring-primary" : "border-transparent"
                                         )}
                                     >
-                                        <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-xl shrink-0">💰</div>
+                                        <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600 shrink-0">
+                                            <Wallet className="w-5 h-5" />
+                                        </div>
                                         <div className="flex-1">
                                             <p className="text-sm font-bold">Kaspi.kz</p>
                                         </div>
@@ -624,7 +640,7 @@ export function CheckoutClient() {
                                                         {item.menu_item.image_url ? (
                                                             <img src={item.menu_item.image_url} alt="" className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <span>🍽️</span>
+                                                            <Utensils className="w-5 h-5 text-muted-foreground/30" />
                                                         )}
                                                     </div>
                                                     <div>
@@ -723,22 +739,24 @@ export function CheckoutClient() {
                     </div>
                 )}
 
-                <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t border-muted z-50">
-                    <Button
-                        className="w-full h-14 rounded-2xl text-lg font-bold shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                        onClick={step === 'form' ? handleContinueToSummary : handleCheckout}
-                        disabled={loading}
-                    >
-                        {loading ? (
-                            <div className="flex items-center gap-2">
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>{t.cart.sending}</span>
-                            </div>
-                        ) : (
-                            step === 'form' ? t.cart.continue_label : t.cart.confirm_and_pay
-                        )}
-                    </Button>
-                </div>
+                {step !== 'auth' && (
+                    <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t border-muted z-50">
+                        <Button
+                            className="w-full h-14 rounded-2xl text-lg font-bold shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            onClick={step === 'form' ? handleContinueToSummary : handleCheckout}
+                            disabled={checkoutLoading}
+                        >
+                            {checkoutLoading ? (
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    <span>{t.cart.sending}</span>
+                                </div>
+                            ) : (
+                                step === 'form' ? t.cart.continue_label : t.cart.confirm_and_pay
+                            )}
+                        </Button>
+                    </div>
+                )}
 
                 <MapPicker
                     open={mapOpen}
@@ -750,6 +768,6 @@ export function CheckoutClient() {
                     }}
                 />
             </main>
-        </div>
+        </div >
     )
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft, Phone, MapPin, Clock, CheckCircle2, XCircle, MessageCircle, CreditCard, PartyPopper, Bike } from 'lucide-react'
+import { ArrowLeft, Phone, MapPin, Clock, CheckCircle2, XCircle, MessageCircle, CreditCard, PartyPopper, Bike, AlertTriangle, Lock } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator'
 import { OrderRating } from '@/components/orders/order-rating'
 import { OrderTracker } from '@/components/orders/order-tracker'
 import { useI18n } from '@/lib/i18n/i18n-context'
+import { toast } from 'sonner'
 
 const statusMap: Record<string, number> = {
   pending: 0,
@@ -35,6 +36,26 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
   const [existingReview, setExistingReview] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  const handleCancelOrder = async () => {
+    setIsCancelling(true)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'cancelled' })
+      .eq('id', id)
+
+    if (error) {
+      toast.error(locale === 'ru' ? 'Ошибка при отмене' : 'Бас тарту кезінде қате шықты')
+    } else {
+      toast.success(locale === 'ru' ? 'Заказ отменен' : 'Тапсырыс тоқтатылды')
+      setOrder((prev: any) => ({ ...prev, status: 'cancelled' }))
+    }
+    setIsCancelling(false)
+    setShowConfirmCancel(false)
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -166,8 +187,9 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                     <CreditCard className="w-6 h-6 text-white" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-amber-900 text-lg">
-                      {locale === 'ru' ? '⚠️ Требуется оплата!' : '⚠️ Төлем қажет!'}
+                    <p className="font-bold text-amber-900 text-lg flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5" />
+                      {locale === 'ru' ? 'Требуется оплата!' : 'Төлем қажет!'}
                     </p>
                     <p className="text-sm text-amber-700 mt-1 font-medium">
                       {t.orders.paymentPendingDesc}
@@ -184,10 +206,11 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                     </span>
                   </a>
                 </Button>
-                <p className="text-[10px] text-amber-600 text-center font-medium mt-3 px-4">
+                <p className="text-[10px] text-amber-600 text-center font-medium mt-3 px-4 flex items-center justify-center gap-1.5">
+                  <Lock className="w-3 h-3" />
                   {locale === 'ru'
-                    ? '🔒 После оплаты заказ автоматически перейдет в статус "Принят"'
-                    : '🔒 Төлем орындалған соң, тапсырыс автоматты түрде "Қабылданды" статусына өтеді'}
+                    ? 'После оплаты заказ автоматически перейдет в статус "Принят"'
+                    : 'Төлем орындалған соң, тапсырыс автоматты түрде "Қабылданды" статусына өтеді'}
                 </p>
               </CardContent>
             </Card>
@@ -222,6 +245,49 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
               </span>
             </Button>
           </a>
+
+          {['pending', 'awaiting_approval', 'awaiting_payment'].includes(order.status) && (
+            <div className="space-y-2">
+              {!showConfirmCancel ? (
+                <Button
+                  variant="ghost"
+                  className="w-full h-12 rounded-2xl text-muted-foreground hover:text-destructive hover:bg-destructive/5 font-medium transition-all"
+                  onClick={() => setShowConfirmCancel(true)}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  {locale === 'ru' ? 'Отменить заказ' : 'Тапсырыстан бас тарту'}
+                </Button>
+              ) : (
+                <div className="bg-destructive/5 border border-destructive/20 rounded-2xl p-4 text-center animate-in fade-in slide-in-from-bottom-2 duration-300 shadow-sm">
+                  <p className="text-sm font-bold text-destructive mb-3">
+                    {locale === 'ru' ? 'Вы уверены, что хотите отменить?' : 'Бас тартуды растайсыз ба?'}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 rounded-xl h-10 text-sm"
+                      onClick={() => setShowConfirmCancel(false)}
+                      disabled={isCancelling}
+                    >
+                      {locale === 'ru' ? 'Нет' : 'Жоқ'}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="flex-1 rounded-xl h-10 text-sm font-bold shadow-lg shadow-destructive/20"
+                      onClick={handleCancelOrder}
+                      disabled={isCancelling}
+                    >
+                      {isCancelling ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                      ) : (
+                        locale === 'ru' ? 'Да, отменить' : 'Иә, бас тарту'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {order.status === 'on_the_way' && (
             <Card className="bg-indigo-50 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-900/50 overflow-hidden rounded-3xl">

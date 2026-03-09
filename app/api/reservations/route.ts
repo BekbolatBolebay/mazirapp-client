@@ -14,6 +14,8 @@ export async function POST(req: Request) {
             table_id,
             payment_method,
             notes,
+            duration_hours = 1,
+            customer_id,
             items = [],
         } = body
 
@@ -42,6 +44,8 @@ export async function POST(req: Request) {
                 table_id: table_id || null,
                 payment_method: payment_method || 'cash',
                 notes: notes || null,
+                duration_hours,
+                customer_id: customer_id || null,
                 total_amount,
                 status: 'pending',
                 payment_status: 'pending'

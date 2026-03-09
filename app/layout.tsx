@@ -14,22 +14,24 @@ export const metadata: Metadata = {
   title: 'Məzir APP - Food Delivery',
   description: 'Order food from your favorite restaurants',
   generator: 'v0.app',
-  icons: {
-    icon: [
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Məzir',
+    startupImage: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/apple-touch-icon.png',
+        media: '(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)',
       },
     ],
-    apple: '/apple-icon.png',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: '/favicon-32x32.png',
+    apple: '/apple-touch-icon.png',
   },
 }
 
@@ -38,11 +40,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
-  ],
+  themeColor: '#ffffff',
 }
+
+import { InstallPrompt } from '@/components/pwa/install-prompt'
+import { PushPrompt } from '@/components/pwa/push-prompt'
 
 export default function RootLayout({
   children,
@@ -61,6 +63,8 @@ export default function RootLayout({
           <AuthProvider>
             <I18nProvider>
               {children}
+              <InstallPrompt />
+              <PushPrompt />
               <BottomNav />
               <Toaster position="top-center" duration={4 * 1000} />
             </I18nProvider>

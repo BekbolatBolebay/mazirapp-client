@@ -19,9 +19,11 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/lib/auth/auth-context'
 
 const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, href: '/admin' },
+    { label: 'Home Categories', icon: ListFilter, href: '/admin/home-categories', superAdminOnly: true },
     { label: 'Categories', icon: ListFilter, href: '/admin/categories' },
     { label: 'Menu Items', icon: MenuIcon, href: '/admin/menu' },
     { label: 'Orders', icon: ShoppingBag, href: '/admin/orders' },
@@ -29,11 +31,12 @@ const navItems = [
     { label: 'Reviews', icon: Star, href: '/admin/reviews' },
     { label: 'Settings', icon: Settings, href: '/admin/settings' },
     { label: 'Clients', icon: Users, href: '/admin/users' },
-    { label: 'Super Admin (New)', icon: Shield, href: 'http://localhost:5173', external: true },
+    { label: 'Super Admin (New)', icon: Shield, href: 'http://localhost:5173', external: true, superAdminOnly: true },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname()
+    const { profile } = useAuth()
 
     return (
         <div className="flex h-screen bg-muted/30">
@@ -47,10 +50,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </div>
 
                 <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-                    {navItems.map((item) => {
+                    {navItems.filter(item => !item.superAdminOnly || profile?.role === 'super_admin').map((item) => {
                         const isActive = pathname === item.href
                         return (
-                            <Link key={item.href} href={item.href}>
+                            <Link key={item.href || item.label} href={item.href || '#'}>
                                 <span className={cn(
                                     "flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                                     isActive

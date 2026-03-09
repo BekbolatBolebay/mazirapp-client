@@ -1,9 +1,10 @@
 'use client'
 
-import { Globe, Moon, Sun, ChevronLeft } from 'lucide-react'
+import { Globe, Moon, Sun, ChevronLeft, User, LogIn } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/lib/auth/auth-context'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useRouter } from 'next/navigation'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { cn } from '@/lib/utils'
 
 export function Header({
   title,
@@ -23,6 +26,7 @@ export function Header({
 }) {
   const { theme, setTheme } = useTheme()
   const { locale, setLocale, t } = useI18n()
+  const { user, profile } = useAuth()
   const router = useRouter()
 
   const handleBack = () => {
@@ -120,6 +124,37 @@ export function Header({
               <Moon className="h-5 w-5 absolute inset-0 rotate-90 scale-0 transition-all duration-500 transform-gpu dark:rotate-0 dark:scale-100 text-indigo-400 font-bold" />
             </div>
             <span className="sr-only">{t.common.theme}</span>
+          </Button>
+
+          {/* ── Profile / Login ── */}
+          <Button
+            variant="ghost"
+            className={cn(
+              "h-10 rounded-xl border transition-all active:scale-95 px-2",
+              user
+                ? "border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10"
+                : "border-transparent hover:border-border hover:bg-secondary"
+            )}
+            onClick={() => router.push(user ? '/profile' : '/login')}
+          >
+            {user ? (
+              <div className="flex items-center gap-2">
+                <Avatar className="h-7 w-7 border border-background shadow-sm">
+                  <AvatarImage src={profile?.avatar_url || ''} />
+                  <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">
+                    {profile?.full_name?.substring(0, 1).toUpperCase() || <User className="h-4 w-4" />}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-xs font-bold hidden sm:inline-block pr-1">
+                  {profile?.full_name?.split(' ')[0] || 'User'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-muted-foreground px-1">
+                <LogIn className="h-5 w-5" />
+                <span className="text-xs font-bold">{locale === 'ru' ? 'Войти' : 'Кіру'}</span>
+              </div>
+            )}
           </Button>
         </div>
       </div>

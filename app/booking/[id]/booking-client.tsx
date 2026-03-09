@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '@/components/layout/header'
 import { BottomNav } from '@/components/layout/bottom-nav'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/lib/auth/auth-context'
+import { useI18n } from '@/lib/i18n/i18n-context'
 import { Badge } from '@/components/ui/badge'
 import {
     Calendar, Clock, Users, ChefHat, Minus, Plus, Trash2,
@@ -81,6 +83,8 @@ function formatDateKK(dateStr: string) {
 
 export default function BookingPage({ restaurantId }: { restaurantId: string }) {
     const router = useRouter()
+    const { user, profile } = useAuth()
+    const { locale } = useI18n()
     const [step, setStep] = useState<Step>('tables')
 
     // Step 0: Tables
@@ -109,6 +113,37 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
     const [submitting, setSubmitting] = useState(false)
     const [reservationId, setReservationId] = useState<string | null>(null)
     const [isTimePickerOpen, setIsTimePickerOpen] = useState(false)
+    const [duration, setDuration] = useState(1) // Жаңа: брондау ұзақтығы (сағат)
+
+    // Жұмыс уақытын өңдеу функциясы
+    const getAvailableSlots = useCallback(() => {
+        if (!restaurant?.working_hours) return TIME_SLOTS
+
+        try {
+            // Формат: "10:00 - 22:00"
+            const [start, end] = restaurant.working_hours.split('-').map(s => s.trim())
+            const [startH, startM] = start.split(':').map(Number)
+            const [endH, endM] = end.split(':').map(Number)
+
+            const startMinutes = startH * 60 + startM
+            const endMinutes = endH * 60 + endM
+
+            return TIME_SLOTS.filter(slot => {
+                const [h, m] = slot.split(':').map(Number)
+                const slotMinutes = h * 60 + m
+
+                // Слот жұмыс уақытында болуы керек
+                // Және таңдалған ұзақтық жұмыс уақытынан аспауы керек
+                const endOfBooking = slotMinutes + (duration * 60)
+                return slotMinutes >= startMinutes && endOfBooking <= endMinutes
+            })
+        } catch (e) {
+            console.error('Working hours parse error:', e)
+            return TIME_SLOTS
+        }
+    }, [restaurant?.working_hours, duration])
+
+    const availableSlots = getAvailableSlots()
 
     // Booking cart sync
     useEffect(() => {
@@ -257,6 +292,8 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                     date: selectedDate,
                     time: selectedTime,
                     guests_count: guests,
+                    duration_hours: duration,
+                    customer_id: profile?.id,
                     table_id: selectedTableId,
                     payment_method: paymentMethod,
                     notes,
@@ -525,9 +562,9 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
 
                                             <div className="overflow-y-auto px-6 pb-12 space-y-8 custom-scrollbar">
                                                 {/* Group slots by hour for better organization */}
-                                                {Array.from({ length: 13 }, (_, i) => i + 9).map(hour => {
+                                                {Array.from({ length: 24 }, (_, i) => i).map(hour => {
                                                     const hourStr = hour.toString().padStart(2, '0');
-                                                    const slots = TIME_SLOTS.filter(s => s.startsWith(hourStr));
+                                                    const slots = availableSlots.filter(s => s.startsWith(hourStr));
                                                     if (slots.length === 0) return null;
 
                                                     return (
@@ -566,6 +603,33 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
                                     </>
                                 )}
                             </AnimatePresence>
+                        </div>
+
+                        {/* Ұзақтығы */}
+                        <div>
+                            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">
+                                Брондау ұзақтығы
+                            </h2>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[1, 2, 3, 4].map((h) => (
+                                    <button
+                                        key={h}
+                                        onClick={() => {
+                                            setDuration(h);
+                                            // Reset time when duration changes to re-validate via availableSlots
+                                            setSelectedTime('');
+                                        }}
+                                        className={cn(
+                                            "h-12 rounded-xl text-sm font-bold transition-all border-2",
+                                            duration === h
+                                                ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/10"
+                                                : "bg-card border-border hover:border-primary/20"
+                                        )}
+                                    >
+                                        {h} сағат
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Адам саны */}

@@ -5,9 +5,9 @@ import { generateFreedomSignature } from '@/utils/payment-helpers'
 
 export async function POST(req: Request) {
     try {
-        const { orderId, amount, description, customerEmail, customerPhone } = await req.json()
+        const { orderId, reservationId, amount, description, customerEmail, customerPhone } = await req.json()
 
-        if (!orderId || !amount) {
+        if ((!orderId && !reservationId) || !amount) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
         }
 
@@ -16,46 +16,42 @@ export async function POST(req: Request) {
         const user = session?.user
 
         console.log('Payment Init Debug - Session:', session ? 'Found' : 'Missing')
-        console.log('Payment Init Debug - User ID:', user?.id)
         if (authError) console.error('Payment Init Debug - Auth Error:', authError)
 
-        if (!user) {
-            console.error('Payment Init - No authenticated user session found in API route')
-            // Don't return yet, let's see if we can find the order anyway (maybe RLS is off or something)
-        }
+        let restaurant: any = null
+        let finalId = orderId || reservationId
 
-        // 1. Get order and restaurant details to find merchant credentials
-        // Try fetching without join first to isolate the issue
-        const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('*, restaurants!orders_restaurant_id_fkey(*)')
-            .eq('id', orderId)
-            .single()
+        // 1. Get order/reservation and restaurant details
+        if (orderId) {
+            const { data: order, error: orderError } = await supabase
+                .from('orders')
+                .select('*, restaurants!orders_restaurant_id_fkey(*)')
+                .eq('id', orderId)
+                .single()
 
-        if (orderError) {
-            console.error('Payment Init - Supabase Query Error:', orderError)
-
-            // Try fetching with service role to confirm if it's an RLS issue
-            const supabaseAdmin = await createServerClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.SUPABASE_SERVICE_ROLE_KEY!,
-                { cookies: { getAll: () => [], setAll: () => { } } }
-            )
-            const { data: adminOrder } = await supabaseAdmin.from('orders').select('*').eq('id', orderId).single()
-
-            if (adminOrder) {
-                console.error('Payment Init - Order EXISTS but is hidden by RLS from current user session')
-                return NextResponse.json({
-                    error: 'RLS Permission Denied',
-                    details: 'Order exists but current session cannot access it. Check RLS policies.'
-                }, { status: 403 })
-            } else {
-                console.error('Payment Init - Order DOES NOT EXIST in database at all')
-                return NextResponse.json({ error: 'Order not found in database', orderId }, { status: 404 })
+            if (orderError) {
+                console.error('Payment Init - Order Query Error:', orderError)
+                return NextResponse.json({ error: 'Order not found', orderId }, { status: 404 })
             }
+            restaurant = order.restaurants
+        } else if (reservationId) {
+            const { data: res, error: resError } = await supabase
+                .from('reservations')
+                .select('*, restaurants(*)')
+                .eq('id', reservationId)
+                .single()
+
+            if (resError) {
+                console.error('Payment Init - Reservation Query Error:', resError)
+                return NextResponse.json({ error: 'Reservation not found', reservationId }, { status: 404 })
+            }
+            restaurant = res.restaurants
         }
 
-        const restaurant = order.restaurants
+        if (!restaurant) {
+            return NextResponse.json({ error: 'Restaurant details not found' }, { status: 500 })
+        }
+
         const merchantId = restaurant.freedom_merchant_id
         const secretKey = restaurant.freedom_secret_key
 
@@ -66,8 +62,8 @@ export async function POST(req: Request) {
         if (!merchantId || !secretKey) {
             console.warn('⚠️ Freedom Pay credentials missing. ENTERING MOCK MODE for testing.');
 
-            // Generate a mock card entry URL to show the user the "card registration/entry" form
-            const mockCardUrl = `/checkout/mock-card?orderId=${orderId}&amount=${amount}`;
+            // Generate a mock card entry URL
+            const mockCardUrl = `/checkout/mock-card?${orderId ? `orderId=${orderId}` : `reservationId=${reservationId}`}&amount=${amount}`;
 
             return NextResponse.json({
                 redirectUrl: mockCardUrl,
@@ -81,15 +77,19 @@ export async function POST(req: Request) {
             pg_merchant_id: merchantId,
             pg_amount: amount,
             pg_currency: 'KZT',
-            pg_order_id: orderId,
-            pg_description: description || `Order #${orderId}`,
+            pg_order_id: finalId, // Use either orderId or reservationId
+            pg_description: description || `Payment for #${finalId.slice(0, 8)}`,
             pg_salt: Math.random().toString(36).substring(7),
             pg_language: 'ru',
             pg_testing_mode: restaurant.freedom_test_mode ? 1 : 0,
             // Webhook and redirect URLs
             pg_result_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/webhook`,
-            pg_success_url: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?status=success`,
-            pg_failure_url: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?status=failure`,
+            pg_success_url: orderId
+                ? `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?status=success`
+                : `${process.env.NEXT_PUBLIC_APP_URL}/booking/${restaurant.id}?step=status&reservationId=${reservationId}`,
+            pg_failure_url: orderId
+                ? `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?status=failure`
+                : `${process.env.NEXT_PUBLIC_APP_URL}/booking/${restaurant.id}?step=confirm&reservationId=${reservationId}&error=payment_failed`,
         }
 
         if (customerEmail) params.pg_user_contact_email = customerEmail

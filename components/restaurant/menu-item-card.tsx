@@ -2,13 +2,15 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Plus, Minus, X, ShoppingCart } from 'lucide-react'
+import { Plus, Minus, X, ShoppingCart, MapPin, Utensils } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { addToLocalCart, LocalCartItem } from '@/lib/storage/local-storage'
 import { Database } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth/auth-context'
+import { AuthModal } from '@/components/auth/auth-modal'
 
 type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
   restaurant?: {
@@ -20,9 +22,12 @@ type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
 
 export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?: boolean }) {
   const { locale, t } = useI18n()
+  const { user, profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [qty, setQty] = useState(1)
   const [mismatchOpen, setMismatchOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [pendingAddToCart, setPendingAddToCart] = useState<{ quantity: number, force: boolean } | null>(null)
 
   const name = locale === 'ru' ? item.name_ru : (item.name_kk || item.name_ru)
   const desc = locale === 'ru' ? item.description_ru : (item.description_kk || item.description_ru)
@@ -31,8 +36,17 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
     : (item.restaurant?.name_en || item.restaurant?.name_ru || '')
 
   function addToCart(quantity = 1, force = false) {
+    console.log('addToCart called', { quantity, force, user: !!user });
     if (!isOpen) {
       toast.error(locale === 'ru' ? 'Кафе сейчас закрыто' : 'Кафе қазір жабық')
+      return
+    }
+
+    // Check if user is authenticated (either logged in or anonymous)
+    if (!user) {
+      console.log('User not found, opening AuthModal');
+      setPendingAddToCart({ quantity, force })
+      setAuthModalOpen(true)
       return
     }
 
@@ -88,7 +102,9 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
               unoptimized
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-4xl select-none">🍽️</div>
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/20 select-none">
+              <Utensils className="w-12 h-12" />
+            </div>
           )}
           {/* Quick add button */}
           <button
@@ -103,7 +119,10 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
         <div className="p-2.5">
           <p className="text-xs font-semibold text-foreground line-clamp-2 min-h-[2rem] mb-1">{name}</p>
           {cafeName && (
-            <p className="text-[10px] text-muted-foreground mb-1 truncate">📍 {cafeName}</p>
+            <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1 truncate">
+              <MapPin className="w-2.5 h-2.5 shrink-0" />
+              {cafeName}
+            </p>
           )}
           <p className="text-sm font-bold text-primary">{item.price.toFixed(0)}₸</p>
         </div>
@@ -139,7 +158,10 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
             <div className="px-5 py-4">
               {/* Cafe name */}
               {cafeName && (
-                <p className="text-xs text-muted-foreground mb-1">📍 {cafeName}</p>
+                <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 shrink-0" />
+                  {cafeName}
+                </p>
               )}
 
               {/* Name */}
@@ -227,6 +249,18 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
           </div>
         </div>
       )}
+      {/* ── Auth Modal ── */}
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
+        onSuccess={() => {
+          if (pendingAddToCart) {
+            addToCart(pendingAddToCart.quantity, pendingAddToCart.force)
+            setPendingAddToCart(null)
+          }
+          setAuthModalOpen(false)
+        }}
+      />
     </>
   )
 }

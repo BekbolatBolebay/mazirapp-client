@@ -12,8 +12,32 @@ interface Category {
   image?: string
 }
 
-export function CategoryGrid({ categories }: { categories: Category[] }) {
+import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react'
+
+export function CategoryGrid({ initialCategories }: { initialCategories: Category[] }) {
   const { t, locale } = useI18n()
+  const [categories, setCategories] = useState(initialCategories)
+  const supabase = createClient()
+
+  useEffect(() => {
+    // Real-time subscription for category changes
+    const channel = supabase
+      .channel('home-category-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, async () => {
+        const { data } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('home_visible', true)
+          .order('home_sort_order', { ascending: true })
+        if (data) setCategories(data)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   const displayCategories = categories.slice(0, 7)
 

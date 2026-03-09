@@ -7,7 +7,7 @@ import { CartList } from '@/components/cart/cart-list'
 import { CartSummary } from '@/components/cart/cart-summary'
 import { useLocalCart } from '@/hooks/use-local-cart'
 import { getBookingCart, clearBookingCart, updateBookingCartQuantity, BookingCartItem } from '@/lib/storage/booking-cart'
-import { Minus, Plus, Trash2, CalendarCheck } from 'lucide-react'
+import { Minus, Plus, Trash2, CalendarCheck, Utensils, Store, ShoppingCart } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
@@ -59,7 +59,7 @@ function BookingCartSection() {
               {item.image_url ? (
                 <Image src={item.image_url} alt={locale === 'ru' ? item.name_ru : item.name_kk} fill className="object-cover" unoptimized />
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-2xl">🍽️</div>
+                <Utensils className="w-6 h-6 text-muted-foreground/30" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -152,11 +152,11 @@ export default function CartPage() {
         <button
           onClick={() => setTab('food')}
           className={cn(
-            'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all relative',
-            tab === 'food' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+            'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all relative flex items-center justify-center gap-2',
+            tab === 'food' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-secondary text-muted-foreground'
           )}
         >
-          🍽️ {t.cart.food_tab}
+          <Utensils className="w-4 h-4" /> {t.cart.food_tab}
           {foodCount > 0 && (
             <span className={cn(
               'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center',
@@ -169,11 +169,11 @@ export default function CartPage() {
         <button
           onClick={() => setTab('cafe')}
           className={cn(
-            'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all relative',
-            tab === 'cafe' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+            'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all relative flex items-center justify-center gap-2',
+            tab === 'cafe' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-secondary text-muted-foreground'
           )}
         >
-          🏪 {t.cart.cafe_tab}
+          <Store className="w-4 h-4" /> {t.cart.cafe_tab}
           {bookingCount > 0 && (
             <span className={cn(
               'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center',
@@ -204,7 +204,9 @@ export default function CartPage() {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="text-6xl mb-4">🛒</div>
+                  <div className="text-muted-foreground/20 mb-6">
+                    <ShoppingCart className="w-20 h-20" />
+                  </div>
                   <h2 className="text-xl font-bold mb-2">{t.cart.empty}</h2>
                   <p className="text-muted-foreground text-sm">{t.cart.add_items_desc}</p>
                 </div>

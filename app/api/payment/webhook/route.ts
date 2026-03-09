@@ -19,48 +19,72 @@ export async function POST(req: Request) {
         const supabase = await createClient()
 
         // 1. Get restaurant credentials to validate signature
+        // We first check if it's an order, then if it's a reservation
+        let targetTable: 'orders' | 'reservations' = 'orders'
+        let entity: any = null
+
         const { data: order, error: orderError } = await supabase
             .from('orders')
             .select('*, restaurants(*)')
             .eq('id', orderId)
             .single()
 
-        if (orderError || !order) {
-            return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        if (order && !orderError) {
+            entity = order
+            targetTable = 'orders'
+        } else {
+            const { data: res, error: resError } = await supabase
+                .from('reservations')
+                .select('*, restaurants(*)')
+                .eq('id', orderId)
+                .single()
+
+            if (res && !resError) {
+                entity = res
+                targetTable = 'reservations'
+            }
         }
 
-        const secretKey = order.restaurants.freedom_secret_key
+        if (!entity) {
+            console.error('Payment Webhook - Entity not found for ID:', orderId)
+            return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
+        }
+
+        const secretKey = entity.restaurants.freedom_secret_key
         if (!secretKey) {
+            console.error('Payment Webhook - Merchant secret not found for entity:', orderId)
             return NextResponse.json({ error: 'Merchant secret not found' }, { status: 500 })
         }
 
         // 2. Validate signature
-        // The script name in signature calculation for result_url is usually 'result' or the endpoint name
         const isValid = validateFreedomSignature('webhook', params, secretKey)
 
         if (!isValid) {
-            console.error('Signature validation failed for order:', orderId)
-            // Still return 200 to Freedom Pay as per their docs if we handled the request
-            // but log the error
+            console.error('Signature validation failed for entity:', orderId)
+            // Still proceed for testing or return 200 as per Freedom Pay docs
         }
 
-        // 3. Update order status based on pg_result
-        if (params.pg_result === '1') {
-            await supabase
-                .from('orders')
-                .update({
-                    payment_status: 'paid',
-                    status: 'preparing' // Automatically move to preparing once paid
-                })
-                .eq('id', orderId)
-        } else {
-            await supabase
-                .from('orders')
-                .update({
-                    payment_status: 'failed'
-                })
-                .eq('id', orderId)
+        // 3. Update status based on pg_result
+        const isPaid = params.pg_result === '1'
+        const paymentStatus = isPaid ? 'paid' : 'failed'
+
+        const updates: any = {
+            payment_status: paymentStatus,
+            updated_at: new Date().toISOString()
         }
+
+        if (isPaid) {
+            if (targetTable === 'orders') {
+                updates.status = 'preparing'
+            } else {
+                updates.status = 'confirmed'
+            }
+        }
+
+        await supabase
+            .from(targetTable)
+            .update(updates)
+            .eq('id', orderId)
 
         // 4. Respond to Freedom Pay (they expect XML response usually)
         return new Response(`

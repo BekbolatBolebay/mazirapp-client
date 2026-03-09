@@ -42,7 +42,9 @@ export default async function CategoriesPage() {
 
                     {categories.length === 0 && (
                         <div className="text-center py-20">
-                            <div className="text-5xl mb-4">📂</div>
+                            <div className="text-muted-foreground/20 mb-4">
+                                <LayoutGrid className="w-16 h-16 mx-auto" />
+                            </div>
                             <h3 className="text-lg font-bold mb-1">Категориялар табылмады</h3>
                             <p className="text-muted-foreground text-sm">Әзірге ешқандай категория жоқ</p>
                         </div>

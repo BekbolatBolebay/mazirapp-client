@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CreditCard, Lock, ArrowLeft, CheckCircle2, MessageCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 
 export default function MockCardPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const orderId = searchParams.get('orderId')
+    const reservationId = searchParams.get('reservationId')
     const amount = searchParams.get('amount')
 
     const [cardNumber, setCardNumber] = useState('')
@@ -42,24 +44,59 @@ export default function MockCardPage() {
         // Simulate bank processing time
         setTimeout(async () => {
             try {
-                // Update database to simulate successful webhook
+                // Determine what we're updating
+                const targetId = orderId || reservationId
+                const targetTable = orderId ? 'orders' : 'reservations'
+
+                console.log('Finalizing mock payment for:', { targetTable, targetId })
+
+                if (!targetId) {
+                    toast.error('ID is missing')
+                    setIsPaying(false)
+                    return
+                }
+
+                // Simulating the update Freedom Pay would do via webhook
                 const { createClient } = await import('@/lib/supabase/client')
                 const supabase = createClient()
 
+                const updates: any = {
+                    payment_status: 'paid',
+                    updated_at: new Date().toISOString()
+                }
+
+                if (orderId) {
+                    updates.status = 'preparing'
+                } else {
+                    updates.status = 'confirmed'
+                }
+
                 const { error } = await supabase
-                    .from('orders')
-                    .update({
-                        payment_status: 'paid',
-                        status: 'new',
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', orderId)
+                    .from(targetTable)
+                    .update(updates)
+                    .eq('id', targetId)
 
-                if (error) throw error
+                if (error) {
+                    console.error('Update error:', error)
+                    toast.error('База мәліметтерін жаңарту қатесі')
+                    setIsPaying(false)
+                    return
+                }
 
+                // If it's a reservation, we might need to get the restaurant_id for redirect
+                let redirectUrl = orderId ? `/orders/${orderId}?status=success&mock=true` : '/';
+
+                if (reservationId) {
+                    const { data: res } = await supabase.from('reservations').select('restaurant_id').eq('id', reservationId).single()
+                    if (res) {
+                        redirectUrl = `/booking/${res.restaurant_id}?step=status&reservationId=${reservationId}&status=success&mock=true`
+                    }
+                }
+
+                toast.success('Төлем сәтті өтті!')
                 setIsSuccess(true)
                 setTimeout(() => {
-                    router.push(`/orders/${orderId}?status=success&mock=true`)
+                    router.push(redirectUrl)
                 }, 1500)
             } catch (err) {
                 console.error('Mock Payment Error:', err)
@@ -83,8 +120,8 @@ export default function MockCardPage() {
                     {!isSuccess ? (
                         <motion.div
                             key="form"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                         >
                             <Card className="border-none shadow-2xl rounded-[2rem] overflow-hidden bg-white">
@@ -208,7 +245,7 @@ export default function MockCardPage() {
                                         asChild
                                     >
                                         <a
-                                            href={`https://wa.me/?text=${encodeURIComponent(`My order tracking link: ${window.location.origin}/orders/${orderId}`)}`}
+                                            href={`https://wa.me/?text=${encodeURIComponent(`My order tracking link: ${window.location.origin}/orders/${orderId || reservationId}`)}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                         >

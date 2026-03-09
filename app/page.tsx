@@ -50,7 +50,7 @@ export default async function HomePage() {
             <PromotionBanner promotions={promotions} />
           )}
 
-          <CategoryGrid categories={categories} />
+          <CategoryGrid initialCategories={categories} />
 
           {restaurants && restaurants.length > 0 && (
             <RestaurantSection restaurants={restaurants} />

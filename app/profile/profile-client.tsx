@@ -1,10 +1,25 @@
 'use client'
 
 import { User } from '@supabase/supabase-js'
-import { LogOut, User as UserIcon, Settings, ChevronRight, Store, CreditCard, Bell, HelpCircle, MapPin } from 'lucide-react'
+import {
+    LogOut,
+    User as UserIcon,
+    Settings,
+    ChevronRight,
+    Store,
+    CreditCard,
+    Bell,
+    HelpCircle,
+    MapPin,
+    History,
+    ShieldCheck,
+    Globe,
+    Moon
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useI18n } from '@/lib/i18n/i18n-context'
+import { useAuth } from '@/lib/auth/auth-context'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,6 +34,7 @@ interface Props {
 export default function ProfileClient({ user, profile, restaurant }: Props) {
     const router = useRouter()
     const { t, locale } = useI18n()
+    const { subscribeToPush } = useAuth()
     const supabase = createClient()
 
     const handleSignOut = async () => {
@@ -94,6 +110,27 @@ export default function ProfileClient({ user, profile, restaurant }: Props) {
                             </Link>
                         ))}
                     </div>
+                </div>
+
+                {/* Push Notifications */}
+                <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600">
+                            <Bell className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold">Хабарламалар</p>
+                            <p className="text-xs text-muted-foreground">Жаңалықтар мен тапсырыс күйі</p>
+                        </div>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={subscribeToPush}
+                        className="rounded-full px-4 h-8 text-[10px] uppercase font-black tracking-widest"
+                    >
+                        Қосу
+                    </Button>
                 </div>
 
                 {/* Sign Out */}

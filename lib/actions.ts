@@ -1,53 +1,64 @@
 'use server'
 
-export async function notifyAdminTelegram(order: any, restaurant: any) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || restaurant?.telegram_bot_token
-    const chatId = restaurant?.telegram_chat_id
+import { createClient } from '@/lib/supabase/server'
+import webpush from 'web-push'
 
-    if (!botToken || !chatId) return
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || ''
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:example@yourdomain.com'
 
-    const orderId = order.id.slice(0, 8)
-    const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mazir-admin.vercel.app'}/orders`
-    const itemsText = order.order_items?.map((item: any) =>
-        `- ${item.menu_items?.name_ru || item.menu_items?.name} x${item.quantity}`
-    ).join('\n') || ''
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+        VAPID_SUBJECT,
+        VAPID_PUBLIC_KEY,
+        VAPID_PRIVATE_KEY
+    )
+}
 
-    const isKk = restaurant.lang === 'kk'
-    const message = isKk
-        ? `🆕 *Жаңа тапсырыс #${orderId}*\n\n` +
-        `👤 Клиент: ${order.customer_name || 'Клиент'}\n` +
-        `📞 Телефон: ${order.customer_phone}\n` +
-        `💰 Сомасы: ${order.total_amount} ₸\n` +
-        `📍 Түрі: ${order.type === 'delivery' ? 'Жеткізу' : 'Алып кету'}\n\n` +
-        `🛒 Тамақтар:\n${itemsText}\n\n` +
-        `🔗 [Админ панелінде ашу](${adminUrl})`
-        : `🆕 *Новый заказ #${orderId}*\n\n` +
-        `👤 Клиент: ${order.customer_name || 'Клиент'}\n` +
-        `📞 Телефон: ${order.customer_phone}\n` +
-        `💰 Сумма: ${order.total_amount} ₸\n` +
-        `📍 Тип: ${order.type === 'delivery' ? 'Доставка' : 'Самовывоз'}\n\n` +
-        `🛒 Позиции:\n${itemsText}\n\n` +
-        `🔗 [Открыть в админ панели](${adminUrl})`
+export async function notifyAdmin(data: any, type: 'order' | 'booking') {
+    // 1. Disable Telegram (as per user request)
+    // notifyAdminTelegram(data, restaurant) -- OLD
 
     try {
-        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: restaurant.telegram_chat_id,
-                text: message,
-                parse_mode: 'Markdown',
-            }),
-        })
+        const supabase = await createClient()
 
-        if (!response.ok) {
-            const errorData = await response.json()
-            console.error('Telegram notification failed:', {
-                status: response.status,
-                error: errorData
-            })
+        // 2. Find all admin users (role = 'admin') who have a push_subscription
+        const { data: admins } = await supabase
+            .from('users')
+            .select('push_subscription')
+            .eq('role', 'admin')
+            .not('push_subscription', 'is', null)
+
+        if (!admins || admins.length === 0) {
+            console.log('No admins with push subscriptions found')
+            return
         }
-    } catch (err) {
-        console.error('Telegram notification network error:', err)
+
+        const orderId = data.id.slice(0, 8)
+        const payload = {
+            title: type === 'order' ? 'Новый заказ!' : 'Новое бронирование!',
+            body: type === 'order'
+                ? `Заказ #${orderId} на сумму ${data.total_amount}₸`
+                : `Бронь на ${data.date} в ${data.time} (${data.guests_count} чел)`,
+            url: type === 'order' ? '/orders' : '/reservations'
+        }
+
+        // 3. Send Push to all active admins
+        const pushPromises = admins.map(admin =>
+            webpush.sendNotification(
+                admin.push_subscription as any,
+                JSON.stringify(payload)
+            ).catch(err => console.error('Error sending push to admin:', err))
+        )
+
+        await Promise.all(pushPromises)
+    } catch (error) {
+        console.error('Error notifying admins:', error)
     }
+}
+
+// Deprecated: keeping only for reference, but wont be called
+export async function notifyAdminTelegram(order: any, restaurant: any) {
+    // Disabled
+    return
 }

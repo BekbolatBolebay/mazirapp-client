@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { notifyAdminTelegram } from '@/lib/actions'
+import { notifyAdmin } from '@/lib/actions'
 import { useLocalCart } from '@/hooks/use-local-cart'
 import { clearLocalCart } from '@/lib/storage/local-storage'
 import { Header } from '@/components/layout/header'
@@ -282,6 +282,9 @@ export function CheckoutClient() {
 
                 if (itemsError) throw itemsError
 
+                // Notify Admin via Push
+                await notifyAdmin(res, 'booking')
+
                 clearLocalCart()
                 toast.success(t.cart.booking_confirmed)
                 router.push('/')
@@ -326,18 +329,8 @@ export function CheckoutClient() {
 
             if (itemsError) throw itemsError
 
-            // Notify Admin via Telegram
-            if (order.restaurant_id) {
-                const { data: restaurant } = await supabase
-                    .from('restaurants')
-                    .select('*')
-                    .eq('id', order.restaurant_id)
-                    .single()
-
-                if (restaurant) {
-                    await notifyAdminTelegram({ ...order, order_items: cartItems.map(item => ({ ...item, menu_items: item.menu_item })) }, restaurant)
-                }
-            }
+            // Notify Admin via Push
+            await notifyAdmin(order, 'order')
 
             if (paymentMethod === 'freedom') {
                 const payRes = await fetch('/api/payment/init', {

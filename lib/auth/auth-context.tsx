@@ -222,15 +222,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return
       }
 
-      const registration = await navigator.serviceWorker.ready
+      // Check if any service worker is registered
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      if (registrations.length === 0) {
+        throw new Error(
+          window.location.hostname === 'localhost'
+            ? 'Service Worker is not registered. PWA might be disabled in development mode.'
+            : 'Сервис-вокер тіркелмеген. PWA өшірулі болуы мүмкін.'
+        )
+      }
+
+      // Add a timeout to serviceWorker.ready to avoid infinite spinning
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Service Worker timeout')), 5000)
+        )
+      ])
+
       if (!registration) {
         throw new Error('Service Worker not ready')
       }
 
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-      })
+      // Try to get existing subscription first
+      let subscription = await registration.pushManager.getSubscription()
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        })
+      }
 
       // Store subscription in profile/DB
       if (user) {

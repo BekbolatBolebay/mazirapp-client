@@ -23,8 +23,11 @@ type AuthContextType = {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, fullName: string) => Promise<void>
   signInWithEmail: (email: string) => Promise<void>
+  signInWithCustomOtp: (email: string, fullName: string, phone: string) => Promise<void>
+  verifyCustomOtp: (email: string, code: string) => Promise<void>
   verifyEmailOtp: (email: string, token: string) => Promise<void>
   signInAnonymous: () => Promise<void>
+  updateProfile: (data: { fullName: string, phone: string }) => Promise<void>
   signOut: () => Promise<void>
   subscribeToPush: () => Promise<void>
 }
@@ -149,10 +152,56 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     router.refresh()
   }
 
+  const signInWithCustomOtp = async (email: string, fullName: string, phone: string) => {
+    const { sendCustomOtp } = await import('./auth-actions')
+    await sendCustomOtp(email, fullName, phone)
+  }
+
+  const verifyCustomOtp = async (email: string, code: string) => {
+    const { verifyCustomOtp: verifyAction } = await import('./auth-actions')
+    const { token_hash } = await verifyAction(email, code)
+
+    const supabase = createClient()
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash,
+      type: 'email'
+    })
+
+    if (error) throw error
+    router.refresh()
+  }
+
   const signInAnonymous = async () => {
     const supabase = createClient()
-    const { error } = await supabase.auth.signInAnonymously()
-    if (error) throw error
+    const { data, error } = await supabase.auth.signInAnonymously()
+    if (error) {
+      console.error('Anonymous sign in error:', error)
+      throw error
+    }
+    // For anonymous users, we might want to ensure a profile exists
+    if (data.user) {
+      await fetchProfile(data.user.id)
+    }
+  }
+
+  const updateProfile = async (data: { fullName: string, phone: string }) => {
+    const response = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: data.fullName,
+        phone: data.phone
+      })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Қате орын алды')
+    }
+
+    if (user) {
+      await fetchProfile(user.id)
+    }
   }
 
   const subscribeToPush = async () => {
@@ -193,7 +242,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <AuthContext.Provider value={{
       user, profile, loading, signIn, signUp,
-      signInWithEmail, verifyEmailOtp, signInAnonymous, subscribeToPush, signOut
+      signInWithEmail, signInWithCustomOtp, verifyCustomOtp, verifyEmailOtp, signInAnonymous, updateProfile, subscribeToPush, signOut
     }}>
       {children}
     </AuthContext.Provider>

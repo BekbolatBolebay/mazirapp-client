@@ -11,19 +11,24 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useI18n } from '@/lib/i18n/i18n-context'
 
 export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
-    const { signInWithEmail, verifyEmailOtp, signInAnonymous } = useAuth()
-    const { locale, t } = useI18n()
+    const { signInWithCustomOtp, verifyCustomOtp, signInAnonymous } = useAuth()
+    const { locale } = useI18n()
     const [email, setEmail] = useState('')
+    const [fullName, setFullName] = useState('')
+    const [phone, setPhone] = useState('')
     const [otp, setOtp] = useState('')
     const [step, setStep] = useState<'choice' | 'email' | 'otp'>('choice')
     const [loading, setLoading] = useState(false)
 
     const handleSendOtp = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!email) return
+        if (!email || !fullName || !phone) {
+            toast.error('Барлық өрістерді толтырыңыз')
+            return
+        }
         setLoading(true)
         try {
-            await signInWithEmail(email)
+            await signInWithCustomOtp(email, fullName, phone)
             setStep('otp')
             toast.success('Код почтаңызға жіберілді')
         } catch (error: any) {
@@ -38,11 +43,11 @@ export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
         if (!otp) return
         setLoading(true)
         try {
-            await verifyEmailOtp(email, otp)
+            await verifyCustomOtp(email, otp)
             toast.success('Жүйеге кірдіңіз!')
             onLogin()
         } catch (error: any) {
-            toast.error('Код қате')
+            toast.error('Код қате немесе уақыты өткен')
         } finally {
             setLoading(false)
         }
@@ -52,6 +57,7 @@ export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
         setLoading(true)
         try {
             await signInAnonymous()
+            toast.success('Қонақ ретінде кірдіңіз')
             onLogin()
         } catch (e) {
             toast.error('Қате орын алды')
@@ -144,9 +150,9 @@ export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
                         <Card className="border-none shadow-xl rounded-[2.5rem] overflow-hidden bg-background p-6">
                             <CardContent className="p-2 space-y-6">
                                 <form onSubmit={handleSendOtp} className="space-y-4">
-                                    <div className="space-y-2">
+                                    <div className="space-y-4">
                                         <div className="flex items-center justify-between px-1">
-                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Email енгізіңіз</label>
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Жеке деректер</label>
                                             <button
                                                 type="button"
                                                 onClick={() => setStep('choice')}
@@ -155,19 +161,44 @@ export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
                                                 Артқа
                                             </button>
                                         </div>
+
+                                        <div className="relative">
+                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                            <Input
+                                                type="text"
+                                                placeholder="Атыңыз (мысалы: Бекболат)"
+                                                value={fullName}
+                                                onChange={(e) => setFullName(e.target.value)}
+                                                className="h-14 rounded-2xl bg-muted/50 border-none pl-12 pr-4 text-base"
+                                                required
+                                            />
+                                        </div>
+
                                         <div className="relative">
                                             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                             <Input
                                                 type="email"
-                                                placeholder="example@mail.com"
+                                                placeholder="Email (мысалы: bek@mail.com)"
                                                 value={email}
                                                 onChange={(e) => setEmail(e.target.value)}
                                                 className="h-14 rounded-2xl bg-muted/50 border-none pl-12 pr-4 text-base"
                                                 required
                                             />
                                         </div>
+
+                                        <div className="relative">
+                                            <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                            <Input
+                                                type="tel"
+                                                placeholder="Телефон (мысалы: +7707...)"
+                                                value={phone}
+                                                onChange={(e) => setPhone(e.target.value)}
+                                                className="h-14 rounded-2xl bg-muted/50 border-none pl-12 pr-4 text-base"
+                                                required
+                                            />
+                                        </div>
                                     </div>
-                                    <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg" disabled={loading}>
+                                    <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg mt-2" disabled={loading}>
                                         {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Код алу'}
                                     </Button>
                                 </form>
@@ -187,7 +218,7 @@ export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
                             <CardContent className="p-2 space-y-6">
                                 <form onSubmit={handleVerifyOtp} className="space-y-4">
                                     <div className="space-y-2 text-center">
-                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Растау коды (Email)</label>
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Растау коды (Email арқылы келді)</label>
                                         <div className="relative mt-2">
                                             <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                             <Input
@@ -209,7 +240,7 @@ export function CheckoutAuth({ onLogin }: { onLogin: () => void }) {
                                         className="w-full text-xs font-bold text-muted-foreground hover:text-primary transition-colors py-2 flex items-center justify-center gap-2"
                                     >
                                         <ArrowLeft className="w-3 h-3" />
-                                        Email-ді өзгерту
+                                        Деректерді өзгерту
                                     </button>
                                 </form>
                             </CardContent>

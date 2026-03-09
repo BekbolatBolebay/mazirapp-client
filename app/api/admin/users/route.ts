@@ -68,3 +68,33 @@ export async function PUT(req: NextRequest) {
     return createAdminError(error.message, 500)
   }
 }
+
+// DELETE user
+export async function DELETE(req: NextRequest) {
+  const { authorized } = await verifyAdmin()
+  if (!authorized) {
+    return createAdminError('Unauthorized', 403)
+  }
+
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return createAdminError('User ID is required', 400)
+    }
+
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const adminClient = createAdminClient()
+
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(id)
+
+    if (deleteError) {
+      return createAdminError(deleteError.message, 500)
+    }
+
+    return createAdminResponse({ success: true, message: 'User deleted successfully' })
+  } catch (error: any) {
+    return createAdminError(error.message, 500)
+  }
+}

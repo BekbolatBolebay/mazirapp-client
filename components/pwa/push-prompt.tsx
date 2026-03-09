@@ -18,7 +18,7 @@ export function PushPrompt() {
 
         // Only show if permission is 'default' (not yet asked)
         if (Notification.permission === 'default') {
-            const timer = setTimeout(() => setOpen(true), 3000) // Show after 3 seconds
+            const timer = setTimeout(() => setOpen(true), 500) // Show almost immediately
             return () => clearTimeout(timer)
         }
     }, [])

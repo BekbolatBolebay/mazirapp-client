@@ -212,9 +212,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     try {
       const permission = await Notification.requestPermission()
-      if (permission !== 'granted') return
+      if (permission !== 'granted') {
+        const { toast } = await import('sonner')
+        toast.error(
+          window.location.hostname === 'localhost'
+            ? 'Notification permission denied'
+            : 'Хабарламаға рұқсат берілмеді'
+        )
+        return
+      }
 
       const registration = await navigator.serviceWorker.ready
+      if (!registration) {
+        throw new Error('Service Worker not ready')
+      }
+
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -223,13 +235,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Store subscription in profile/DB
       if (user) {
         const supabase = createClient()
-        await supabase
+        const { error } = await supabase
           .from('customers')
           .update({ push_subscription: subscription })
           .eq('id', user.id)
+
+        if (error) throw error
       }
-    } catch (error) {
+
+      const { toast } = await import('sonner')
+      toast.success(
+        window.location.hostname === 'localhost'
+          ? 'Subscribed to notifications'
+          : 'Хабарламалар қосылды'
+      )
+    } catch (error: any) {
       console.error('Error subscribing to push:', error)
+      const { toast } = await import('sonner')
+      toast.error(error.message || 'Error subscribing')
     }
   }
 

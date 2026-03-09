@@ -23,9 +23,18 @@ export function PushPrompt() {
         }
     }, [])
 
+    const [loading, setLoading] = useState(false)
+
     const handleAllow = async () => {
-        await subscribeToPush()
-        setOpen(false)
+        setLoading(true)
+        try {
+            await subscribeToPush()
+            setOpen(false)
+        } catch (err) {
+            // Error is handled by toasts in subscribeToPush
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (
@@ -56,10 +65,20 @@ export function PushPrompt() {
                     <div className="w-full space-y-3 pt-2">
                         <Button
                             onClick={handleAllow}
+                            disabled={loading}
                             className="w-full h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-primary/20"
                         >
-                            <ShieldCheck className="w-5 h-5" />
-                            {locale === 'ru' ? 'Разрешить' : 'Рұқсат ету'}
+                            {loading ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>{locale === 'ru' ? 'Загрузка...' : 'Жүктелуде...'}</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <ShieldCheck className="w-5 h-5" />
+                                    {locale === 'ru' ? 'Разрешить' : 'Рұқсат ету'}
+                                </>
+                            )}
                         </Button>
                     </div>
                 </div>

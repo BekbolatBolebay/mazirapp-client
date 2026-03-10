@@ -4,7 +4,7 @@ import { Share2, Check } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useI18n } from '@/lib/i18n'
+import { useI18n } from '@/lib/i18n/i18n-context'
 
 interface ShareButtonProps {
     id: string

@@ -11,6 +11,7 @@ import { FavoriteButton } from '@/components/restaurant/favorite-button'
 import { ShareButton } from '@/components/restaurant/share-button'
 import { Metadata } from 'next'
 import RestaurantMap from '@/components/restaurant/restaurant-map'
+import { isRestaurantOpen } from '@/lib/restaurant-utils'
 
 export default async function RestaurantPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -39,6 +40,18 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
     .eq('restaurant_id', id)
     .eq('is_available', true)
     .order('sort_order', { ascending: true })
+
+  const { data: workingHours } = await supabase
+    .from('working_hours')
+    .select('*')
+    .eq('cafe_id', id)
+
+  const status = isRestaurantOpen(restaurant.status, workingHours)
+  const displayStatus = status.isOpen ? 'Ашық' : 'Жабық'
+  const timeInfo = workingHours?.find(h => h.day_of_week === new Date().getDay())
+  const workingHoursText = timeInfo && !timeInfo.is_day_off
+    ? `${timeInfo.open_time.slice(0, 5)} - ${timeInfo.close_time.slice(0, 5)}`
+    : ''
 
   return (
     <div className="flex flex-col min-h-screen pb-16">
@@ -77,13 +90,13 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        {restaurant.is_open ? (
+        {status.isOpen ? (
           <Badge className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-white text-primary border-0">
-            Ашық • {restaurant.working_hours || '08:00 - 22:00'}
+            {displayStatus} {workingHoursText && `• ${workingHoursText}`}
           </Badge>
         ) : (
           <Badge className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground border-0">
-            Жабық
+            {displayStatus} {status.message.includes('Opens at') && `• ${status.message.split('at ')[1]}`}
           </Badge>
         )}
       </div>
@@ -188,7 +201,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                     <MenuItemCard
                       key={item.id}
                       item={item}
-                      isOpen={restaurant.is_open}
+                      isOpen={status.isOpen}
                       isCombo={category?.is_combo || false}
                     />
                   )
@@ -205,7 +218,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                       <MenuItemCard
                         key={item.id}
                         item={item}
-                        isOpen={restaurant.is_open}
+                        isOpen={status.isOpen}
                         isCombo={cat.is_combo || false}
                       />
                     ))}

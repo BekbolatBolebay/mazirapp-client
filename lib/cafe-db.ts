@@ -24,6 +24,10 @@ export type Restaurant = {
     cuisine_types: string[]
     total_seats?: number
     kaspi_link?: string
+    freedom_merchant_id?: string
+    freedom_payment_secret_key?: string
+    freedom_receipt_secret_key?: string
+    payment_type?: 'MANUAL' | 'AUTOMATED'
     accept_cash: boolean
     accept_kaspi: boolean
     accept_freedom: boolean

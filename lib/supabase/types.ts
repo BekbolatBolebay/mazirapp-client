@@ -47,6 +47,44 @@ export type Database = {
           updated_at?: string
         }
       }
+      categories: {
+        Row: {
+          id: string
+          cafe_id: string | null
+          name_kk: string
+          name_ru: string
+          name_en: string | null
+          icon_url: string | null
+          sort_order: number | null
+          is_active: boolean | null
+          is_combo: boolean | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          cafe_id?: string | null
+          name_kk: string
+          name_ru: string
+          name_en?: string | null
+          icon_url?: string | null
+          sort_order?: number | null
+          is_active?: boolean | null
+          is_combo?: boolean | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          cafe_id?: string | null
+          name_kk?: string
+          name_ru?: string
+          name_en?: string | null
+          icon_url?: string | null
+          sort_order?: number | null
+          is_active?: boolean | null
+          is_combo?: boolean | null
+          created_at?: string | null
+        }
+      }
       restaurants: {
         Row: {
           id: string
@@ -134,10 +172,14 @@ export type Database = {
           description_en: string | null
           image_url: string | null
           price: number
+          original_price: number | null
           is_available: boolean
           is_popular: boolean
           is_stop_list: boolean
           preparation_time: number
+          combo_items: Json | null
+          type: string | null
+          rental_deposit: number | null
           created_at: string
           updated_at: string
         }

@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MenuItemCard } from '@/components/restaurant/menu-item-card'
 import { FavoriteButton } from '@/components/restaurant/favorite-button'
+import { ShareButton } from '@/components/restaurant/share-button'
+import { Metadata } from 'next'
 import RestaurantMap from '@/components/restaurant/restaurant-map'
 
 export default async function RestaurantPage({ params }: { params: Promise<{ id: string }> }) {
@@ -69,7 +71,10 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
             </Button>
           </Link>
 
-          <FavoriteButton restaurantId={id} />
+          <div className="flex items-center gap-2">
+            <ShareButton id={id} name={restaurant.name_ru || restaurant.name_kk} />
+            <FavoriteButton restaurantId={id} />
+          </div>
         </div>
 
         {restaurant.is_open ? (
@@ -177,9 +182,17 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
 
             <TabsContent value="all" className="mt-4">
               <div className="grid grid-cols-2 gap-3">
-                {menuItems?.map((item) => (
-                  <MenuItemCard key={item.id} item={item} isOpen={restaurant.is_open} />
-                ))}
+                {menuItems?.map((item) => {
+                  const category = categories?.find(c => c.id === item.category_id)
+                  return (
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      isOpen={restaurant.is_open}
+                      isCombo={category?.is_combo || false}
+                    />
+                  )
+                })}
               </div>
             </TabsContent>
 
@@ -189,7 +202,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                   {menuItems
                     ?.filter((item) => item.category_id === cat.id)
                     .map((item) => (
-                      <MenuItemCard key={item.id} item={item} isOpen={restaurant.is_open} />
+                      <MenuItemCard
+                        key={item.id}
+                        item={item}
+                        isOpen={restaurant.is_open}
+                        isCombo={cat.is_combo || false}
+                      />
                     ))}
                 </div>
               </TabsContent>

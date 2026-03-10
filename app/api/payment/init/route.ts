@@ -52,8 +52,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Restaurant details not found' }, { status: 500 })
         }
 
-        const merchantId = restaurant.freedom_merchant_id
-        const secretKey = restaurant.freedom_secret_key
+        const merchantId = restaurant.freedom_merchant_id || process.env.FREEDOM_MERCHANT_ID
+        const secretKey = restaurant.freedom_payment_secret_key || restaurant.freedom_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
 
         console.log('Payment Init Debug - Merchant ID:', merchantId ? 'Present' : 'MISSING')
         console.log('Payment Init Debug - Secret Key:', secretKey ? 'Present' : 'MISSING')

@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { Plus, Minus, X, ShoppingCart, MapPin, Utensils } from 'lucide-react'
+import { Plus, Minus, X, ShoppingCart, MapPin, Utensils, Star, Clock, Info, ChevronRight, Share2, Plus as PlusIcon } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { addToLocalCart, LocalCartItem } from '@/lib/storage/local-storage'
 import { Database } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -18,9 +19,10 @@ type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
     name_en: string
     id?: string
   }
+  is_combo?: boolean
 }
 
-export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?: boolean }) {
+export function MenuItemCard({ item, isOpen = true, isCombo = false }: { item: MenuItem, isOpen?: boolean, isCombo?: boolean }) {
   const { locale, t } = useI18n()
   const { user, profile } = useAuth()
   const [open, setOpen] = useState(false)
@@ -28,6 +30,19 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
   const [mismatchOpen, setMismatchOpen] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingAddToCart, setPendingAddToCart] = useState<{ quantity: number, force: boolean } | null>(null)
+
+  // -- Hash-based auto-open --
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash === `#item-${item.id}`) {
+        setOpen(true)
+        setQty(1)
+      }
+    }
+    handleHash()
+    window.addEventListener('hashchange', handleHash)
+    return () => window.removeEventListener('hashchange', handleHash)
+  }, [item.id])
 
   const name = locale === 'ru' ? item.name_ru : (item.name_kk || item.name_ru)
   const desc = locale === 'ru' ? item.description_ru : (item.description_kk || item.description_ru)
@@ -173,9 +188,74 @@ export function MenuItemCard({ item, isOpen = true }: { item: MenuItem, isOpen?:
               )}
 
               {/* Price */}
-              <p className="text-2xl font-bold text-primary mb-5">
-                {(item.price * qty).toFixed(0)}₸
-              </p>
+              <div className="flex items-end justify-between mb-5">
+                <div>
+                  <p className="text-2xl font-bold text-primary relative">
+                    {item.type === 'rental' && (
+                      <Badge variant="secondary" className="absolute -top-6 left-0 bg-blue-500/80 text-white border-none text-[10px]">
+                        {locale === 'ru' ? 'Аренда' : 'Аренда'}
+                      </Badge>
+                    )}
+                    {item.original_price && (
+                      <span className="text-base text-muted-foreground line-through mr-2">
+                        {(item.original_price * qty).toFixed(0)}₸
+                      </span>
+                    )}
+                    {(item.price * qty).toFixed(0)}₸
+                  </p>
+                  {item.type === 'rental' && (
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      {locale === 'ru' ? 'За аренду' : 'Жалға алу үшін'}
+                    </p>
+                  )}
+                </div>
+                {item.type === 'rental' && item.rental_deposit && (
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-foreground">+{item.rental_deposit.toFixed(0)}₸</p>
+                    <p className="text-[10px] text-muted-foreground">{locale === 'ru' ? 'Залог' : 'Кепілақы'}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Combo Items */}
+              {isCombo && item.combo_items && Array.isArray(item.combo_items) && (item.combo_items.length > 0) && (
+                <div className="mb-6 space-y-3">
+                  <h3 className="text-sm font-bold text-foreground border-b pb-2">
+                    {locale === 'ru' ? 'В набор входит:' : 'Комбо құрамы:'}
+                  </h3>
+                  <div className="space-y-2">
+                    {(item.combo_items as any[]).map((subItem, idx) => {
+                      const subItemId = subItem.item_id || subItem.id
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 p-2 rounded-xl bg-secondary/30 border border-border/50 transition-all hover:bg-secondary/50 cursor-pointer active:scale-[0.98]"
+                          onClick={() => {
+                            if (subItemId) {
+                              window.location.hash = `item-${subItemId}`
+                            }
+                          }}
+                        >
+                          {subItem.image_url && (
+                            <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+                              <Image src={subItem.image_url} alt={subItem.name} fill className="object-cover" unoptimized />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{subItem.name}</p>
+                            {subItem.description && (
+                              <p className="text-[10px] text-muted-foreground line-clamp-1">{subItem.description}</p>
+                            )}
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Plus className="w-4 h-4 text-primary" />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Quantity + Add to cart */}
               <div className="flex items-center gap-3 mb-4">

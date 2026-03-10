@@ -15,22 +15,32 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     )
 }
 
-export async function notifyAdmin(data: any, type: 'order' | 'booking') {
-    // 1. Disable Telegram (as per user request)
-    // notifyAdminTelegram(data, restaurant) -- OLD
-
+export async function notifyAdmin(data: any, type: 'order' | 'booking', restaurantId?: string) {
     try {
         const supabase = await createClient()
 
-        // 2. Find all admin users (role = 'admin') who have a push_subscription
-        const { data: admins } = await supabase
-            .from('users')
-            .select('push_subscription')
-            .eq('role', 'admin')
-            .not('push_subscription', 'is', null)
+        // 1. Determine which admin to notify. 
+        // If restaurantId is provided, notify the owner of that restaurant.
+        // Otherwise, notify all admins (fallback).
+        let adminQuery = supabase.from('users').select('push_subscription').eq('role', 'admin').not('push_subscription', 'is', null)
+
+        if (restaurantId) {
+            // Find the owner_id of the restaurant
+            const { data: restaurant } = await supabase
+                .from('restaurants')
+                .select('owner_id')
+                .eq('id', restaurantId)
+                .single()
+
+            if (restaurant?.owner_id) {
+                adminQuery = adminQuery.eq('id', restaurant.owner_id)
+            }
+        }
+
+        const { data: admins } = await adminQuery
 
         if (!admins || admins.length === 0) {
-            console.log('No admins with push subscriptions found')
+            console.log('No admins with push subscriptions found for this restaurant')
             return
         }
 
@@ -43,7 +53,7 @@ export async function notifyAdmin(data: any, type: 'order' | 'booking') {
             url: type === 'order' ? '/orders' : '/reservations'
         }
 
-        // 3. Send Push to all active admins
+        // 2. Send Push to all active admins
         const pushPromises = admins.map(admin =>
             webpush.sendNotification(
                 admin.push_subscription as any,

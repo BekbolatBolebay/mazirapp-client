@@ -78,6 +78,10 @@ export async function POST(req: Request) {
             }
         }
 
+        // Import notifyAdmin (using relative path as it is /app/api/reservations/route.ts)
+        const { notifyAdmin } = await import('@/lib/actions')
+        await notifyAdmin(reservation, 'booking', restaurant_id)
+
         return NextResponse.json({ success: true, reservation })
     } catch (err: any) {
         console.error('API error:', err)

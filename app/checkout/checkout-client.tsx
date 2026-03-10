@@ -59,7 +59,7 @@ export function CheckoutClient() {
     const [phone, setPhone] = useState('')
     const [address, setAddress] = useState('')
     const [notes, setNotes] = useState('')
-    const [paymentMethod, setPaymentMethod] = useState<'kaspi' | 'freedom' | null>(null)
+    const [paymentMethod, setPaymentMethod] = useState<'kaspi' | 'freedom' | 'cash' | null>(null)
 
     // Load persisted payment method
     useEffect(() => {
@@ -70,7 +70,7 @@ export function CheckoutClient() {
     }, [])
 
     // Persist payment method
-    const handleSetPaymentMethod = (method: 'kaspi' | 'freedom') => {
+    const handleSetPaymentMethod = (method: 'kaspi' | 'freedom' | 'cash') => {
         setPaymentMethod(method)
         localStorage.setItem('last_payment_method', method)
     }
@@ -114,6 +114,28 @@ export function CheckoutClient() {
         }
     }, [orderType, coords, restaurantSettings])
 
+    // Re-validate and reset payment method when orderType changes
+    useEffect(() => {
+        if (!restaurantSettings) return
+
+        const isBooking = orderType === 'booking'
+        const canKaspi = isBooking ? restaurantSettings.booking_accept_kaspi : restaurantSettings.accept_kaspi
+        const canFreedom = isBooking ? restaurantSettings.booking_accept_freedom : restaurantSettings.accept_freedom
+        const canCash = isBooking ? restaurantSettings.booking_accept_cash : restaurantSettings.accept_cash
+
+        setPaymentMethod(prev => {
+            if (prev === 'kaspi' && canKaspi) return 'kaspi'
+            if (prev === 'freedom' && canFreedom) return 'freedom'
+            if (prev === 'cash' && canCash) return 'cash'
+
+            // Auto-select first available
+            if (canKaspi) return 'kaspi'
+            if (canFreedom) return 'freedom'
+            if (canCash) return 'cash'
+            return null
+        })
+    }, [orderType, restaurantSettings])
+
     const total = subtotal + calculatedFee
 
     // Fetch restaurant settings and tables
@@ -141,11 +163,18 @@ export function CheckoutClient() {
                         setPaymentMethod(prev => {
                             if (prev) return prev
                             const persisted = localStorage.getItem('last_payment_method')
-                            if (persisted === 'kaspi' && data.accept_kaspi) return 'kaspi'
-                            if (persisted === 'freedom' && data.accept_freedom) return 'freedom'
+                            const isBooking = orderType === 'booking'
+                            const canKaspi = isBooking ? data.booking_accept_kaspi : data.accept_kaspi
+                            const canFreedom = isBooking ? data.booking_accept_freedom : data.accept_freedom
+                            const canCash = isBooking ? data.booking_accept_cash : data.accept_cash
 
-                            if (data.accept_kaspi) return 'kaspi'
-                            if (data.accept_freedom) return 'freedom'
+                            if (persisted === 'kaspi' && canKaspi) return 'kaspi'
+                            if (persisted === 'freedom' && canFreedom) return 'freedom'
+                            if (persisted === 'cash' && canCash) return 'cash'
+
+                            if (canKaspi) return 'kaspi'
+                            if (canFreedom) return 'freedom'
+                            if (canCash) return 'cash'
                             return null
                         })
 
@@ -283,7 +312,7 @@ export function CheckoutClient() {
                 if (itemsError) throw itemsError
 
                 // Notify Admin via Push
-                await notifyAdmin(res, 'booking')
+                await notifyAdmin(res, 'booking', restaurantId || undefined)
 
                 clearLocalCart()
                 toast.success(t.cart.booking_confirmed)
@@ -330,7 +359,7 @@ export function CheckoutClient() {
             if (itemsError) throw itemsError
 
             // Notify Admin via Push
-            await notifyAdmin(order, 'order')
+            await notifyAdmin(order, 'order', restaurantId || undefined)
 
             if (paymentMethod === 'freedom') {
                 const payRes = await fetch('/api/payment/init', {
@@ -571,7 +600,7 @@ export function CheckoutClient() {
                         <section className="space-y-3">
                             <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider px-1">{t.cart.payment_method}</h3>
                             <div className="grid grid-cols-1 gap-2">
-                                {restaurantSettings?.accept_kaspi && (
+                                {((orderType === 'booking' ? restaurantSettings?.booking_accept_kaspi : restaurantSettings?.accept_kaspi)) && (
                                     <button
                                         onClick={() => handleSetPaymentMethod('kaspi')}
                                         className={cn(
@@ -588,7 +617,7 @@ export function CheckoutClient() {
                                         {paymentMethod === 'kaspi' && <CheckCircle2 className="w-5 h-5 text-primary" />}
                                     </button>
                                 )}
-                                {restaurantSettings?.accept_freedom && (
+                                {((orderType === 'booking' ? restaurantSettings?.booking_accept_freedom : restaurantSettings?.accept_freedom)) && (
                                     <button
                                         onClick={() => handleSetPaymentMethod('freedom')}
                                         className={cn(
@@ -602,6 +631,21 @@ export function CheckoutClient() {
                                             <p className="text-[10px] text-muted-foreground">Visa, MasterCard, Maestro</p>
                                         </div>
                                         {paymentMethod === 'freedom' && <CheckCircle2 className="w-5 h-5 text-primary" />}
+                                    </button>
+                                )}
+                                {((orderType === 'booking' ? restaurantSettings?.booking_accept_cash : restaurantSettings?.accept_cash)) && (
+                                    <button
+                                        onClick={() => handleSetPaymentMethod('cash')}
+                                        className={cn(
+                                            "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left bg-card",
+                                            paymentMethod === 'cash' ? "border-primary ring-1 ring-primary" : "border-transparent"
+                                        )}
+                                    >
+                                        <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-xl shrink-0">💵</div>
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold">{locale === 'kk' ? 'Қолма-қол' : 'Наличными'}</p>
+                                        </div>
+                                        {paymentMethod === 'cash' && <CheckCircle2 className="w-5 h-5 text-primary" />}
                                     </button>
                                 )}
                             </div>

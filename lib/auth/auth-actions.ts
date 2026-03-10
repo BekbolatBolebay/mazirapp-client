@@ -39,26 +39,40 @@ export async function sendCustomOtp(email: string, fullName: string, phone: stri
     // Send Email
     try {
         await transporter.sendMail({
-            from: process.env.SMTP_FROM,
+            from: process.env.SMTP_FROM || process.env.SMTP_USER,
             to: email,
             subject: `Mazir App: Растау коды - ${code}`,
             html: `
-        <div style="font-family: sans-serif; max-width: 400px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #ff385c; text-align: center;">Mazir App</h2>
-          <p>Сәлеметсіз бе, <b>${fullName}</b>!</p>
-          <p>Сіздің тіркелу немесе жүйеге кіру кодыңыз:</p>
-          <div style="background: #f4f4f4; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; border-radius: 5px;">
+        <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 40px auto; padding: 40px; border-radius: 24px; background-color: #ffffff; border: 1px solid #eef2f6; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+          <div style="text-align: center; margin-bottom: 32px;">
+            <div style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #ff385c 0%, #e31c5f 100%); border-radius: 16px; color: #ffffff; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; box-shadow: 0 4px 12px rgba(227, 28, 95, 0.2);">
+              Mazir App
+            </div>
+          </div>
+          
+          <div style="color: #1a1f36; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+            Сәлеметсіз бе, <b>${fullName}</b>!<br>
+            Жүйеге кіру үшін төмендегі растау кодын қолданыңыз:
+          </div>
+          
+          <div style="background: #f8fafc; padding: 32px; text-align: center; font-size: 36px; font-weight: 800; letter-spacing: 8px; border-radius: 20px; color: #ff385c; border: 2px dashed #e2e8f0; margin: 24px 0;">
             ${code}
           </div>
-          <p style="font-size: 12px; color: #888; margin-top: 20px;">
-            Бұл код 10 минут ішінде жарамды. Егер сіз бұл сұранысты жасамасаңыз, бұл хатқа мән бермеңіз.
-          </p>
+          
+          <div style="color: #64748b; font-size: 13px; text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #f1f5f9;">
+            Бұл код <b>10 минут</b> ішінде жарамды.<br>
+            <span style="color: #94a3b8;">Егер сіз бұл сұранысты жасамасаңыз, бұл хатқа мән бермеңіз.</span>
+          </div>
+          
+          <div style="text-align: center; margin-top: 24px;">
+            <p style="font-size: 11px; color: #cbd5e1; margin: 0;">&copy; ${new Date().getFullYear()} Mazir App. All rights reserved.</p>
+          </div>
         </div>
       `,
         })
     } catch (emailError) {
         console.error('Error sending email:', emailError)
-        throw new Error('Почта жіберу мүмкін болмады.')
+        throw new Error('Почта жіберу мүмкін болмады. SMTP параметрлерін тексеріңіз.')
     }
 
     return { success: true }

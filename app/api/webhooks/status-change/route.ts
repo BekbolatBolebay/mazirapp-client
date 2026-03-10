@@ -45,6 +45,8 @@ export async function POST(req: Request) {
         if (customer?.push_subscription) {
             const statusMap: any = {
                 'new': 'Жаңа тапсырыс қабылданды!',
+                'pending': 'Брондау сұранысы қабылданды, күте тұрыңыз...',
+                'confirmed': 'Брондау расталды! Сізді күтеміз.',
                 'accepted': 'Тапсырыс қабылданды, дайындық басталды!',
                 'cooking': 'Тағам дайындалуда...',
                 'ready': 'Тапсырыс дайын!',

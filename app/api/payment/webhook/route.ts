@@ -50,7 +50,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
         }
 
-        const secretKey = entity.restaurants.freedom_secret_key
+        const secretKey = entity.restaurants.freedom_payment_secret_key || entity.restaurants.freedom_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
         if (!secretKey) {
             console.error('Payment Webhook - Merchant secret not found for entity:', orderId)
             return NextResponse.json({ error: 'Merchant secret not found' }, { status: 500 })

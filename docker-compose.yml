@@ -1,0 +1,139 @@
+# Integrated Docker Compose for Mazir App & Self-hosted Supabase
+# Persistence: All data is stored in /mnt/data/
+
+services:
+  # --- Next.js Applications ---
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.next
+      args:
+        - APP_DIR=food-app-build # Points to the client project directory
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
+      - NEXT_PUBLIC_APP_URL=${CLIENT_URL} # Should be your https domain
+    restart: always
+    networks:
+      - internal
+    depends_on:
+      - db
+      - kong
+
+  admin-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.next
+      args:
+        - APP_DIR=admin
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
+      - NEXT_PUBLIC_APP_URL=${ADMIN_URL}
+    restart: always
+    networks:
+      - internal
+    depends_on:
+      - db
+      - kong
+
+  # --- Supabase Services ---
+  db:
+    image: supabase/postgres:15.1.1.78
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Use a strong password in .env
+    volumes:
+      - /mnt/data/supabase/db:/var/lib/postgresql/data # Persistence on /mnt/data
+      - ./supabase/postgresql.conf:/etc/postgresql/postgresql.conf
+    restart: always
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 32G # Explicit memory limit for Postgres
+
+  kong:
+    image: kong:2.8.1
+    restart: always
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+    volumes:
+      - ./supabase/kong.yml:/var/lib/kong/kong.yml
+    networks:
+      - internal
+
+  auth:
+    image: supabase/gotrue:v2.132.3
+    depends_on:
+      - db
+    environment:
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${CLIENT_URL}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+    restart: always
+    networks:
+      - internal
+
+  rest:
+    image: postgrest/postgrest:v10.1.2
+    depends_on:
+      - db
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+    restart: always
+    networks:
+      - internal
+
+  realtime:
+    image: supabase/realtime:v2.25.23
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    restart: always
+    networks:
+      - internal
+
+  storage:
+    image: supabase/storage-api:v0.43.11
+    depends_on:
+      - db
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      FILE_STORAGE_BACKEND: local
+      FILE_STORAGE_LOCAL_ROOT_PATH: /var/lib/storage
+    volumes:
+      - /mnt/data/supabase/storage:/var/lib/storage
+    restart: always
+    networks:
+      - internal
+
+  # --- Ingress / Proxy ---
+  nginx-proxy-manager:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: always
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - /mnt/data/npm/config:/config
+      - /mnt/data/npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+# Note: You will need to provide kong.yml and postgresql.conf as well.

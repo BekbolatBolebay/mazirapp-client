@@ -44,7 +44,7 @@ services:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Use a strong password in .env
     volumes:
-      - /mnt/data/supabase/db:/var/lib/postgresql/data # Persistence on /mnt/data
+      - ./volumes/supabase/db:/var/lib/postgresql/data # Relative path persistence
       - ./supabase/postgresql.conf:/etc/postgresql/postgresql.conf
     restart: always
     networks:
@@ -113,24 +113,11 @@ services:
       FILE_STORAGE_BACKEND: local
       FILE_STORAGE_LOCAL_ROOT_PATH: /var/lib/storage
     volumes:
-      - /mnt/data/supabase/storage:/var/lib/storage
+      - ./volumes/supabase/storage:/var/lib/storage
     restart: always
     networks:
       - internal
 
-  # --- Ingress / Proxy ---
-  nginx-proxy-manager:
-    image: 'jc21/nginx-proxy-manager:latest'
-    restart: always
-    ports:
-      - '80:80'
-      - '81:81'
-      - '443:443'
-    volumes:
-      - /mnt/data/npm/config:/config
-      - /mnt/data/npm/letsencrypt:/etc/letsencrypt
-    networks:
-      - internal
 
 networks:
   internal:

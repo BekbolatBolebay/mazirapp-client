@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import pb from '@/utils/pocketbase'
 
 export async function POST(req: Request) {
     try {
@@ -9,18 +9,20 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Token is required' }, { status: 400 })
         }
 
-        const supabase = createAdminClient()
+        // Fetch order by tracking token bypassing RLS if needed
+        // Assuming 'orders' collection has 'courier_tracking_token' field
+        const record = await pb.collection('orders').getFirstListItem(`courier_tracking_token="${token}"`, {
+            expand: 'order_items_via_order_id', // Adjust based on PocketBase relation name
+        })
 
-        // Fetch order by tracking token bypassing RLS
-        const { data: order, error } = await supabase
-            .from('orders')
-            .select('*, items:order_items(*)')
-            .eq('courier_tracking_token', token)
-            .single()
-
-        if (error || !order) {
-            console.error('[Track Order Details] Error:', error)
+        if (!record) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        }
+
+        // Map PocketBase record to expected frontend structure
+        const order = {
+            ...record,
+            items: record.expand?.order_items_via_order_id || [],
         }
 
         return NextResponse.json(order)

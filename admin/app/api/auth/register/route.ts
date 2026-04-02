@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import pb from '@/utils/pocketbase'
 
 export async function POST(request: Request) {
     try {
@@ -17,40 +17,33 @@ export async function POST(request: Request) {
             selectedDays
         } = body
 
-        const supabaseAdmin = createAdminClient()
-
-        // 1. Create User via Admin Auth (bypasses email confirmation if desired, sets metadata)
-        const { data: userData, error: userError } = await supabaseAdmin.auth.admin.createUser({
+        // 1. Create User via PocketBase
+        // Note: PocketBase 'users' collection usually has 'email', 'password', 'passwordConfirm', 'name'
+        const userData = await pb.collection('users').create({
             email,
             password,
-            email_confirm: true,
-            user_metadata: {
-                role: 'admin',
-                full_name: cafeName
-            }
+            passwordConfirm: password,
+            name: cafeName,
         })
 
-        if (userError) {
-            console.error('Registration Error (User):', userError)
-            return NextResponse.json({ error: userError.message }, { status: 400 })
-        }
+        const userId = userData.id
 
-        const userId = userData.user.id
-
-        // 1b. Create Staff Profile (just in case trigger fails or for immediate consistency)
-        const { error: profileError } = await supabaseAdmin.from('staff_profiles').insert({
-            id: userId,
-            email: email,
-            full_name: cafeName,
-            role: 'admin'
-        })
-
-        if (profileError && profileError.code !== '23505') { // Ignore unique violation if trigger already ran
+        // 1b. Create Staff Profile
+        try {
+            await pb.collection('staff_profiles').create({
+                id: userId, // PocketBase user IDs are usually the same if you specify them or just use the created ID
+                // If the IDs are different, we should link them. Assuming we use userId as the record ID or link it.
+                // If it's a separate collection, we can just use userId as the ID if we want parity with Supabase.
+                email: email,
+                full_name: cafeName,
+                role: 'admin'
+            })
+        } catch (profileError) {
             console.error('Registration Error (Profile):', profileError)
         }
 
         // 2. Create Restaurant
-        const { data: cafeData, error: cafeError } = await supabaseAdmin.from('restaurants').insert({
+        const cafeData = await pb.collection('restaurants').create({
             name_kk: cafeName,
             name_ru: cafeName,
             name_en: cafeName,
@@ -59,30 +52,27 @@ export async function POST(request: Request) {
             owner_id: userId,
             status: 'open',
             is_open: true,
-            city: 'Алматы', // Default city to ensure visibility in filtered lists
+            city: 'Алматы',
             latitude: latitude,
             longitude: longitude,
-        }).select().single()
+        })
 
-        if (cafeError) {
-            console.error('Registration Error (Cafe):', cafeError)
-            // Cleanup user if restaurant creation fails? Maybe not necessary for this flow
-            return NextResponse.json({ error: cafeError.message }, { status: 400 })
+        if (!cafeData) {
+            throw new Error('Failed to create restaurant record')
         }
 
         // 3. Create Default Working Hours
-        const workingHours = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
-            cafe_id: cafeData.id,
-            day_of_week: day,
-            open_time: openTime,
-            close_time: closeTime,
-            is_day_off: !selectedDays.includes(day),
-        }))
+        const workingHoursPromises = [0, 1, 2, 3, 4, 5, 6].map((day) => {
+            return pb.collection('working_hours').create({
+                cafe_id: cafeData.id,
+                day_of_week: day,
+                open_time: openTime,
+                close_time: closeTime,
+                is_day_off: !selectedDays.includes(day),
+            })
+        })
 
-        const { error: hoursError } = await supabaseAdmin.from('working_hours').insert(workingHours)
-        if (hoursError) {
-            console.error('Registration Error (Hours):', hoursError)
-        }
+        await Promise.all(workingHoursPromises)
 
         return NextResponse.json({
             success: true,
@@ -91,6 +81,6 @@ export async function POST(request: Request) {
 
     } catch (error: any) {
         console.error('API Error:', error)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
     }
 }

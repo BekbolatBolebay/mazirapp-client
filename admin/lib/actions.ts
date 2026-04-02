@@ -1,17 +1,14 @@
-'use server'
-
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 import { revalidatePath } from 'next/cache'
 import { getCurrentRestaurantId } from './db'
 import { DEFAULT_CATEGORIES } from './constants'
 
 export async function getDebugInfo() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = pb.authStore.model
     return {
         uid: user?.id,
         email: user?.email,
-        role: user?.app_metadata?.role || user?.user_metadata?.role
+        role: user?.role
     }
 }
 
@@ -20,145 +17,162 @@ export async function seedDefaultCategories(shouldRevalidate = true, restaurantI
     const id = restaurantId || await getCurrentRestaurantId()
     if (!id) return { error: new Error('Unauthorized') }
 
-    const supabase = await createClient()
-
     // Бар категорияларды алу
-    const { data: existing } = await supabase
-        .from('categories')
-        .select('name_kk')
-        .eq('cafe_id', id)
+    try {
+        const existing = await pb.collection('categories').getFullList({
+            filter: `cafe_id="${id}"`,
+            fields: 'name_kk',
+        })
 
-    const existingNames = new Set((existing || []).map((c: any) => c.name_kk))
+        const existingNames = new Set((existing || []).map((c: any) => c.name_kk))
 
-    console.log('Duplication Debug - Existing Names:', Array.from(existingNames))
+        // Жоқ категорияларды ғана қосу
+        const toInsert = DEFAULT_CATEGORIES
+            .filter(c => !existingNames.has(c.name_kk))
+            .map(c => ({
+                name_kk: c.name_kk,
+                name_ru: c.name_ru,
+                name_en: c.name_en,
+                sort_order: c.sort_order,
+                cafe_id: id,
+                is_active: true,
+                icon_url: '',
+                is_combo: c.name_kk === 'Комболар' || c.name_kk === 'Combo'
+            }))
 
-    // Жоқ категорияларды ғана қосу
-    const toInsert = DEFAULT_CATEGORIES
-        .filter(c => !existingNames.has(c.name_kk))
-        .map(c => ({
-            name_kk: c.name_kk,
-            name_ru: c.name_ru,
-            name_en: c.name_en,
-            sort_order: c.sort_order,
-            cafe_id: id,
-            is_active: true,
-            icon_url: '',
-            is_combo: c.name_kk === 'Комболар' || c.name_kk === 'Combo'
-        }))
+        if (toInsert.length === 0) return { error: null, added: 0 }
 
-    if (toInsert.length === 0) return { error: null, added: 0 }
+        const createPromises = toInsert.map(item => pb.collection('categories').create(item))
+        await Promise.all(createPromises)
 
-    const { error } = await supabase.from('categories').insert(toInsert)
-    // Removed revalidatePath entirely from this function as it's called during render
-    return { error, added: toInsert.length }
+        return { error: null, added: toInsert.length }
+    } catch (error) {
+        console.error('Seed Categories Error:', error)
+        return { error, added: 0 }
+    }
 }
 
 export async function addMenuItem(payload: any, restaurantId?: string) {
     const id = restaurantId || await getCurrentRestaurantId()
     if (!id) return { data: null, error: new Error('Unauthorized') }
 
-    const supabase = await createClient()
-    const finalPayload = {
-        ...payload,
-        cafe_id: id,
-    }
+    try {
+        const finalPayload = {
+            ...payload,
+            cafe_id: id,
+        }
 
-    const { data, error } = await supabase.from('menu_items').insert(finalPayload).select().single()
-    if (error) {
+        const record = await pb.collection('menu_items').create(finalPayload)
+        revalidatePath('/menu')
+        return { data: record, error: null }
+    } catch (error) {
         console.error('Add MenuItem Error:', error)
+        return { data: null, error }
     }
-    if (!error) revalidatePath('/menu')
-    return { data, error }
 }
 
 export async function updateMenuItem(id: string, payload: any) {
-    const supabase = await createClient()
-    const { data, error } = await supabase
-        .from('menu_items')
-        .update(payload)
-        .eq('id', id)
-        .select()
-        .single()
-    if (!error) revalidatePath('/menu')
-    return { data, error }
+    try {
+        const record = await pb.collection('menu_items').update(id, payload)
+        revalidatePath('/menu')
+        return { data: record, error: null }
+    } catch (error) {
+        console.error('Update MenuItem Error:', error)
+        return { data: null, error }
+    }
 }
 
 export async function deleteMenuItem(id: string) {
-    const supabase = await createClient()
-    const { error } = await supabase.from('menu_items').delete().eq('id', id)
-    if (!error) revalidatePath('/menu')
-    return { error }
+    try {
+        await pb.collection('menu_items').delete(id)
+        revalidatePath('/menu')
+        return { error: null }
+    } catch (error) {
+        console.error('Delete MenuItem Error:', error)
+        return { error }
+    }
 }
 
 export async function addCategory(payload: any, restaurantId?: string) {
     const id = restaurantId || await getCurrentRestaurantId()
     if (!id) return { data: null, error: new Error('Unauthorized') }
 
-    const supabase = await createClient()
-    const finalPayload = {
-        ...payload,
-        cafe_id: id
-    }
+    try {
+        const finalPayload = {
+            ...payload,
+            cafe_id: id
+        }
 
-    const { data, error } = await supabase.from('categories').insert(finalPayload).select().single()
-    if (!error) revalidatePath('/menu')
-    return { data, error }
+        const record = await pb.collection('categories').create(finalPayload)
+        revalidatePath('/menu')
+        return { data: record, error: null }
+    } catch (error) {
+        console.error('Add Category Error:', error)
+        return { data: null, error }
+    }
 }
 
 export async function updateCategory(id: string, payload: any) {
-    const supabase = await createClient()
-    const { data, error } = await supabase
-        .from('categories')
-        .update(payload)
-        .eq('id', id)
-        .select()
-        .single()
-    if (!error) revalidatePath('/menu')
-    return { data, error }
+    try {
+        const record = await pb.collection('categories').update(id, payload)
+        revalidatePath('/menu')
+        return { data: record, error: null }
+    } catch (error) {
+        console.error('Update Category Error:', error)
+        return { data: null, error }
+    }
 }
 
 export async function deleteCategory(id: string) {
-    const supabase = await createClient()
-    const { error } = await supabase.from('categories').delete().eq('id', id)
-    if (!error) revalidatePath('/menu')
-    return { error }
+    try {
+        await pb.collection('categories').delete(id)
+        revalidatePath('/menu')
+        return { error: null }
+    } catch (error) {
+        console.error('Delete Category Error:', error)
+        return { error }
+    }
 }
 
 export async function addTable(payload: any, restaurantId?: string) {
     const id = restaurantId || await getCurrentRestaurantId()
     if (!id) return { data: null, error: new Error('Unauthorized') }
 
-    const supabase = await createClient()
-    const finalPayload = {
-        ...payload,
-        cafe_id: id,
-    }
+    try {
+        const finalPayload = {
+            ...payload,
+            cafe_id: id,
+        }
 
-    const { data, error } = await supabase.from('restaurant_tables').insert(finalPayload).select().single()
-    if (!error) revalidatePath('/tables')
-    return { data, error }
+        const record = await pb.collection('restaurant_tables').create(finalPayload)
+        revalidatePath('/tables')
+        return { data: record, error: null }
+    } catch (error) {
+        console.error('Add Table Error:', error)
+        return { data: null, error }
+    }
 }
 
 export async function updateTable(id: string, payload: any) {
-    const supabase = await createClient()
-    const { data, error } = await supabase
-        .from('restaurant_tables')
-        .update(payload)
-        .eq('id', id)
-        .select()
-        .single()
-    if (!error) revalidatePath('/tables')
-    return { data, error }
+    try {
+        const record = await pb.collection('restaurant_tables').update(id, payload)
+        revalidatePath('/tables')
+        return { data: record, error: null }
+    } catch (error) {
+        console.error('Update Table Error:', error)
+        return { data: null, error }
+    }
 }
 
 export async function deleteTable(id: string) {
-    const supabase = await createClient()
-    const { error } = await supabase
-        .from('restaurant_tables')
-        .update({ is_active: false })
-        .eq('id', id)
-    if (!error) revalidatePath('/tables')
-    return { error }
+    try {
+        await pb.collection('restaurant_tables').update(id, { is_active: false })
+        revalidatePath('/tables')
+        return { error: null }
+    } catch (error) {
+        console.error('Delete Table Error:', error)
+        return { error }
+    }
 }
 
 export async function notifyAdminTelegram(order: any, restaurant: any) {
@@ -217,51 +231,49 @@ export async function updateWorkingHours(hours: any[], restaurantId?: string) {
     const id = restaurantId || await getCurrentRestaurantId()
     if (!id) return { error: new Error('Unauthorized') }
 
-    const supabase = await createClient()
+    try {
+        // 1. Get existing hours to delete them
+        const existing = await pb.collection('working_hours').getFullList({
+            filter: `cafe_id="${id}"`,
+        })
 
-    // 1. Delete existing hours
-    const { error: deleteError } = await supabase
-        .from('working_hours')
-        .delete()
-        .eq('cafe_id', id)
+        const deletePromises = existing.map(item => pb.collection('working_hours').delete(item.id))
+        await Promise.all(deletePromises)
 
-    if (deleteError) return { error: deleteError }
+        // 2. Insert new hours
+        const createPromises = hours.map(({ id: hourId, created_at, updated_at, ...h }) => {
+            return pb.collection('working_hours').create({
+                ...h,
+                cafe_id: id
+            })
+        })
 
-    // 2. Insert new hours
-    const toInsert = hours.map(({ id: hourId, created_at, updated_at, ...h }) => ({
-        ...h,
-        cafe_id: id
-    }))
-
-    const { error: insertError } = await supabase
-        .from('working_hours')
-        .insert(toInsert)
-
-    if (!insertError) revalidatePath('/profile')
-    return { error: insertError }
+        await Promise.all(createPromises)
+        revalidatePath('/profile')
+        return { error: null }
+    } catch (error) {
+        console.error('Update Working Hours Error:', error)
+        return { error }
+    }
 }
 
 export async function updateCafeSettings(payload: any, restaurantId?: string) {
     const id = restaurantId || await getCurrentRestaurantId()
     if (!id) return { data: null, error: new Error('Unauthorized') }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
+    const user = pb.authStore.model
     if (!user) return { data: null, error: new Error('Unauthorized') }
 
-    // Use update since getCurrentRestaurantId guarantees the record exists
-    const { data, error } = await supabase
-        .from('restaurants')
-        .update(payload)
-        .eq('id', id)
-        .select()
-        .single()
-
-    if (!error) {
+    try {
+        const record = await pb.collection('restaurants').update(id, payload)
+        
         revalidatePath('/profile')
         revalidatePath('/') // Dashboard might display some settings
         revalidatePath(`/restaurant/${id}`)
+        
+        return { data: record, error: null }
+    } catch (error) {
+        console.error('Update Cafe Settings Error:', error)
+        return { data: null, error }
     }
-    return { data, error }
 }

@@ -1,30 +1,24 @@
-'use client'
-
 import { useEffect } from 'react'
 import { getFcmToken, onMessageListener } from '@/lib/firebase'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { toast } from 'sonner'
 
 export function FCMHandler() {
     useEffect(() => {
         const setupFCM = async () => {
             try {
-                const supabase = createClient()
-                const { data: { user } } = await supabase.auth.getUser()
+                const user = pb.authStore.model
                 
                 if (!user) return
 
                 const token = await getFcmToken()
                 
                 if (token) {
-                    // Update token in database if it exists
-                    await supabase
-                        .from('staff_profiles')
-                        .update({ 
-                            fcm_token: token,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', user.id)
+                    // Update token in users collection (was staff_profiles in Supabase)
+                    await pb.collection('users').update(user.id, { 
+                        fcm_token: token,
+                        updated_at: new Date().toISOString()
+                    })
                 }
 
                 // Listen for foreground messages

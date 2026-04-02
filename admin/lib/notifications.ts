@@ -1,8 +1,7 @@
 'use server'
 
 import webpush from 'web-push'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || ''
@@ -20,8 +19,6 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     console.warn('[Notifications] VAPID keys not configured! Push notifications will not work.')
 }
 
-
-
 export async function notifyCustomer(
     customerId: string,
     payload: { title: string; body: string; url?: string },
@@ -32,41 +29,30 @@ export async function notifyCustomer(
 
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-            const clientSupabase = await createClient()
-            const { data: { user } } = await clientSupabase.auth.getUser()
+            const user = pb.authStore.model
 
             if (!user) {
                 throw new Error('Unauthorized: No user session')
             }
 
             // Verify role (admin or super_admin)
-            const { data: profile } = await clientSupabase
-                .from('staff_profiles')
-                .select('role')
-                .eq('id', user.id)
-                .single()
+            const profile = await pb.collection('staff_profiles').getOne(user.id)
 
             if (profile?.role !== 'admin' && profile?.role !== 'super_admin') {
                 throw new Error('Forbidden: User is not an admin')
             }
 
-            const supabase = createAdminClient()
-
-            // Fetch customer push info
-            let { data: customer } = await supabase
-                .from('clients')
-                .select('push_subscription, fcm_token')
-                .eq('id', customerId)
-                .single()
-
-            if (!customer) {
+            // Fetch customer push info from PocketBase
+            let customer: any = null
+            try {
+                customer = await pb.collection('clients').getOne(customerId)
+            } catch (e) {
                 // Try staff_profiles table (in case admin is the customer, e.g. testing)
-                const { data: staff } = await supabase
-                    .from('staff_profiles')
-                    .select('push_subscription, fcm_token')
-                    .eq('id', customerId)
-                    .single()
-                customer = staff as any
+                try {
+                    customer = await pb.collection('staff_profiles').getOne(customerId)
+                } catch (ee) {
+                    console.log(`[Notifications] Customer ${customerId} not found in clients or staff_profiles`)
+                }
             }
 
             if (!customer || (!customer.push_subscription && !customer.fcm_token)) {

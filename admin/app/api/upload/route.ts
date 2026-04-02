@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 import { uploadFile } from '@/lib/storage'
 
 export async function POST(request: Request) {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const user = pb.authStore.model
 
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -18,30 +17,26 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 })
         }
 
-        // Кафе ID-ін алу (папка құрылымы үшін)
-        const { data: cafe } = await supabase
-            .from('restaurants')
-            .select('id')
-            .eq('owner_id', user.id)
-            .single()
+        // Кафе ID-ін алу (папка құрылымы үшін, бірақ PB-де бұл метадерек қана)
+        let cafeId = 'unknown'
+        try {
+            const cafe = await pb.collection('restaurants').getFirstListItem(`owner_id="${user.id}"`)
+            cafeId = cafe.id
+        } catch (e) {
+            console.warn('Could not find restaurant for user during upload')
+        }
 
-        const cafeId = cafe?.id || 'unknown'
         const timestamp = Date.now()
         const fileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_')
         const key = `${cafeId}/${timestamp}-${fileName}`
 
-        console.log('--- Uploading to Supabase Storage ---')
+        console.log('--- Uploading to PocketBase ---')
         const url = await uploadFile(file, key)
         console.log('Upload Success:', url)
 
         return NextResponse.json({ url })
     } catch (error: any) {
-        console.error('Upload Route Error Detail:', {
-            message: error.message,
-            name: error.name,
-            code: error.code,
-            stack: error.stack
-        })
+        console.error('Upload Route Error Detail:', error)
         return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
     }
 }

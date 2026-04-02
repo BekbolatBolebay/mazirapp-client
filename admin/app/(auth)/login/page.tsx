@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
@@ -13,7 +13,6 @@ import { toast } from 'sonner'
 export default function LoginPage() {
     const { lang } = useApp()
     const router = useRouter()
-    const supabase = createClient()
     const [loading, setLoading] = useState(false)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -22,18 +21,21 @@ export default function LoginPage() {
         e.preventDefault()
         setLoading(true)
 
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        })
-
-        if (error) {
+        try {
+            const authData = await pb.collection('users').authWithPassword(email, password)
+            
+            if (authData) {
+                // Sync with cookies for middleware/SSR
+                document.cookie = pb.authStore.exportToCookie({ httpOnly: false })
+                
+                toast.success(t(lang, 'welcome'))
+                router.push('/')
+                router.refresh()
+            }
+        } catch (error: any) {
+            console.error('Login Error:', error)
             toast.error(t(lang, 'invalidData'))
             setLoading(false)
-        } else {
-            toast.success(t(lang, 'welcome'))
-            router.push('/')
-            router.refresh()
         }
     }
 

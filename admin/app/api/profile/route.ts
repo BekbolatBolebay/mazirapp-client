@@ -1,25 +1,16 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import pb from '@/utils/pocketbase'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const user = pb.authStore.model
 
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const { data, error } = await supabase
-            .from('staff_profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single()
-
-        if (error) throw error
-
-        return NextResponse.json({ profile: data })
+        const record = await pb.collection('staff_profiles').getOne(user.id)
+        return NextResponse.json({ profile: record })
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
@@ -27,8 +18,7 @@ export async function GET() {
 
 export async function PUT(request: Request) {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const user = pb.authStore.model
 
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -40,28 +30,21 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Full name and phone are required' }, { status: 400 })
         }
 
-        // 1. Update public.staff_profiles
-        const { error: dbError } = await supabase
-            .from('staff_profiles')
-            .update({
-                full_name,
-                phone,
-                updated_at: new Date().toISOString()
+        // 1. Update staff_profiles collection in PocketBase
+        await pb.collection('staff_profiles').update(user.id, {
+            full_name,
+            phone,
+        })
+
+        // 2. Sync with auth metadata if needed
+        // In PocketBase, the 'users' collection often holds this info directly.
+        // If staff_profiles is separate, we might also want to update the 'users' collection.
+        try {
+            await pb.collection('users').update(user.id, {
+                name: full_name,
             })
-            .eq('id', user.id)
-
-        if (dbError) throw dbError
-
-        // 2. Sync with auth.users using Admin SDK
-        const adminClient = createAdminClient()
-        const { error: authError } = await adminClient.auth.admin.updateUserById(
-            user.id,
-            { user_metadata: { full_name } }
-        )
-
-        if (authError) {
-            console.error('Error syncing auth metadata:', authError)
-            // We don't throw here to avoid failing the whole request if only sync fails
+        } catch (authError) {
+            console.error('Error syncing auth metadata in PocketBase:', authError)
         }
 
         return NextResponse.json({ success: true })

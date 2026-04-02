@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
@@ -24,7 +24,6 @@ const MapPicker = dynamic(() => import('@/components/restaurant/map-picker').the
 export default function RegisterPage() {
     const { lang, setLang } = useApp()
     const router = useRouter()
-    const supabase = createClient()
     const [step, setStep] = useState(1)
     const [loading, setLoading] = useState(false)
     const [sendingOtp, setSendingOtp] = useState(false)
@@ -104,12 +103,12 @@ export default function RegisterPage() {
             }
 
             // After successful server-side registration, sign in on the client side
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-                email,
-                password
-            })
+            const authData = await pb.collection('users').authWithPassword(email, password)
 
-            if (signInError) throw signInError
+            if (authData) {
+                // Sync with cookies for middleware/SSR
+                document.cookie = pb.authStore.exportToCookie({ httpOnly: false })
+            }
 
             toast.success(t(lang, 'registerSuccess'))
             

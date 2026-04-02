@@ -10,7 +10,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { useApp } from '@/lib/app-context'
 import { toast } from 'sonner'
 import { resumeAudioContext } from '@/lib/sound-utils'
@@ -148,8 +148,7 @@ export function PushPrompt() {
             }
 
             // Step 7: Save subscription and FCM token to database
-            const supabase = createClient()
-            const { data: { user } } = await supabase.auth.getUser()
+            const user = pb.authStore.model
 
             if (!user) {
                 const errorMsg = lang === 'ru' ? 'Пользователь не авторизован' : 'Пайдаланушы авторизацияланбаған'
@@ -162,16 +161,11 @@ export function PushPrompt() {
 
             console.log('[PushPrompt] Saving to database...')
 
-            const { error: updateError } = await supabase
-                .from('staff_profiles')
-                .update({ 
-                    push_subscription: subscription,
-                    fcm_token: fcmToken,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', user.id)
-
-            if (updateError) throw updateError
+            await pb.collection('users').update(user.id, { 
+                push_subscription: JSON.stringify(subscription),
+                fcm_token: fcmToken,
+                updated_at: new Date().toISOString()
+            })
 
             toast.success(lang === 'ru' ? 'Уведомления успешно включены' : 'Хабарламалар сәтті қосылды')
             resumeAudioContext()

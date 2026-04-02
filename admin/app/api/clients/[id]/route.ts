@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 
 export async function DELETE(
     req: NextRequest,
@@ -13,34 +12,34 @@ export async function DELETE(
     }
 
     // 1. Verify that the requester is an admin
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const user = pb.authStore.model
 
-    if (authError || !user) {
+    if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user has admin role in public.staff_profiles
-    const { data: userData, error: userError } = await supabase
-        .from('staff_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
+    try {
+        // Check if user has admin role in staff_profiles
+        const profile = await pb.collection('staff_profiles').getOne(user.id)
 
-    if (userError || userData?.role !== 'admin') {
-        return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+        if (profile?.role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+        }
+
+        // 2. Delete user from PocketBase 'users' collection
+        // In PocketBase, deleting from 'users' usually handles its own records.
+        // If staff_profiles is separate, we might need to delete it manually if no cascade.
+        await pb.collection('users').delete(id)
+        
+        try {
+            await pb.collection('staff_profiles').delete(id)
+        } catch (e) {
+            // Might have been deleted by cascade or didn't exist
+        }
+
+        return NextResponse.json({ success: true, message: 'User deleted successfully' })
+    } catch (error: any) {
+        console.error('Error deleting user:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
     }
-
-    // 2. Use Admin Client to delete from auth.users
-    const adminClient = createAdminClient()
-
-    // Note: Deleting from auth.users will cascade to public.staff_profiles via ON DELETE CASCADE.
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(id)
-
-    if (deleteError) {
-        console.error('Error deleting user:', deleteError)
-        return NextResponse.json({ error: deleteError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, message: 'User deleted successfully' })
 }

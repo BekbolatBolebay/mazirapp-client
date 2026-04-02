@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Phone, MapPin, Clock, CheckCircle2, XCircle, MessageCircle, CreditCard, Calendar, Users, Loader2, ChevronRight, Utensils, Info } from 'lucide-react'
 import { format } from 'date-fns'
-import { createClient } from '@/lib/supabase/client'
+import { getReservationDetails, getReservationReview, subscribeToReservation } from '@/lib/pocketbase/reservations'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -35,21 +35,9 @@ export default function ReservationDetailsPage({ params }: { params: Promise<{ i
 
     useEffect(() => {
         const fetchData = async () => {
-            const supabase = createClient()
-            
-            const { data, error } = await supabase
-                .from('reservations')
-                .select(`
-                    *,
-                    restaurants!cafe_id (*),
-                    reservation_items (*),
-                    restaurant_tables (*)
-                `)
-                .eq('id', id)
-                .single()
+            const data = await getReservationDetails(id)
 
-            if (error || !data) {
-                console.error('Reservation fetch error:', error)
+            if (!data) {
                 router.push('/orders')
                 return
             }
@@ -57,48 +45,35 @@ export default function ReservationDetailsPage({ params }: { params: Promise<{ i
             setReservation(data)
 
             // Fetch review if exists
-            const { data: reviewData } = await supabase
-                .from('reviews')
-                .select('*')
-                .eq('reservation_id', id)
-                .maybeSingle()
-            
+            const reviewData = await getReservationReview(id)
             setExistingReview(reviewData)
             setLoading(false)
         }
 
         fetchData()
 
-        // Real-time listener
-        const supabase = createClient()
-        const channel = supabase
-            .channel(`reservation-details-${id}`)
-            .on(
-                'postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'reservations', filter: `id=eq.${id}` },
-                (payload) => {
-                    const oldStatus = reservation?.status
-                    const newStatus = payload.new.status
-                    
-                    if (oldStatus !== newStatus) {
-                        const statusNames: any = {
-                            pending: locale === 'kk' ? 'Күтілуде' : 'В ожидании',
-                            confirmed: locale === 'kk' ? 'Расталды' : 'Подтверждено',
-                            awaiting_payment: locale === 'kk' ? 'Төлем күтілуде' : 'Ожидает оплаты',
-                            preparing: locale === 'kk' ? 'Дайындалуда' : 'Готовится',
-                            completed: locale === 'kk' ? 'Аяқталды' : 'Завершено',
-                            cancelled: locale === 'kk' ? 'Бас тартылды' : 'Отменено'
-                        }
-                        toast.success(`${locale === 'kk' ? 'Статус өзгерді:' : 'Статус изменился:'} ${statusNames[newStatus] || newStatus}`)
-                    }
-                    
-                    setReservation((prev: any) => ({ ...prev, ...payload.new }))
+        // Real-time listener using PocketBase
+        const unsubscribe = subscribeToReservation(id, (newRecord) => {
+            const oldStatus = reservation?.status
+            const newStatus = newRecord.status
+            
+            if (oldStatus && oldStatus !== newStatus) {
+                const statusNames: any = {
+                    pending: locale === 'kk' ? 'Күтілуде' : 'В ожидании',
+                    confirmed: locale === 'kk' ? 'Расталды' : 'Подтверждено',
+                    awaiting_payment: locale === 'kk' ? 'Төлем күтілуде' : 'Ожидает оплаты',
+                    preparing: locale === 'kk' ? 'Дайындалуда' : 'Готовится',
+                    completed: locale === 'kk' ? 'Аяқталды' : 'Завершено',
+                    cancelled: locale === 'kk' ? 'Бас тартылды' : 'Отменено'
                 }
-            )
-            .subscribe()
+                toast.success(`${locale === 'kk' ? 'Статус өзгерді:' : 'Статус изменился:'} ${statusNames[newStatus] || newStatus}`)
+            }
+            
+            setReservation((prev: any) => ({ ...prev, ...newRecord }))
+        })
 
         return () => {
-            supabase.removeChannel(channel)
+            unsubscribe()
         }
     }, [id, router, reservation?.status, locale])
 

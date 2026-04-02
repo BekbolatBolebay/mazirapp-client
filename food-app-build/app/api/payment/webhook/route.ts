@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 import { validateFreedomSignature } from '@/utils/payment-helpers'
 
 export async function POST(req: Request) {
@@ -16,49 +16,39 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Order ID missing' }, { status: 400 })
         }
 
-        const supabase = await createClient()
-
-        // 1. Get restaurant credentials to validate signature
-        // We first check if it's an order, then if it's a reservation
-        let targetTable: 'orders' | 'reservations' = 'orders'
+        // 1. Get restaurant credentials to validate signature via PocketBase
+        let targetCollection: 'orders' | 'reservations' = 'orders'
         let entity: any = null
 
-        const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('*, restaurants(*)')
-            .eq('id', orderId)
-            .single()
-
-        if (order && !orderError) {
-            entity = order
-            targetTable = 'orders'
-        } else {
-            const { data: res, error: resError } = await supabase
-                .from('reservations')
-                .select('*, restaurants(*)')
-                .eq('id', orderId)
-                .single()
-
-            if (res && !resError) {
-                entity = res
-                targetTable = 'reservations'
+        // Try orders first
+        try {
+            entity = await pb.collection('orders').getOne(orderId, {
+                expand: 'cafe_id'
+            })
+            targetCollection = 'orders'
+        } catch (e) {
+            // Try reservations if order not found
+            try {
+                entity = await pb.collection('reservations').getOne(orderId, {
+                    expand: 'cafe_id'
+                })
+                targetCollection = 'reservations'
+            } catch (e2) {
+                console.error('Payment Webhook - Entity not found for ID:', orderId)
+                return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
             }
         }
 
-        if (!entity) {
-            console.error('Payment Webhook - Entity not found for ID:', orderId)
-            return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
-        }
-
-        const secretKey = entity.restaurants.freedom_payment_secret_key || entity.restaurants.freedom_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
+        const restaurant = entity.expand?.cafe_id
+        const secretKey = restaurant?.freedom_payment_secret_key || restaurant?.freedom_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
+        
         if (!secretKey) {
             console.error('Payment Webhook - Merchant secret not found for entity:', orderId)
             return NextResponse.json({ error: 'Merchant secret not found' }, { status: 500 })
         }
 
         // 2. Validate signature
-        // The script name for signature depends on your configuration, 
-        // usually it's the filename or a fixed string like 'result'
+        // Note: 'webhook' is used as the script name for signature validation here
         const isValid = validateFreedomSignature('webhook', params, secretKey)
 
         if (!isValid) {
@@ -66,7 +56,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
         }
 
-        // 3. Verify amount to prevent "underpayment" fraud
+        // 3. Verify amount
         const pgAmount = parseFloat(params.pg_amount)
         const expectedAmount = parseFloat(entity.total_amount)
 
@@ -85,40 +75,42 @@ export async function POST(req: Request) {
         }
 
         if (isPaid) {
-            if (targetTable === 'orders') {
-                updates.status = 'preparing'
-            } else {
-                updates.status = 'confirmed'
-            }
+            updates.status = (targetCollection === 'orders') ? 'preparing' : 'confirmed'
         }
 
-        await supabase
-            .from(targetTable)
-            .update(updates)
-            .eq('id', orderId)
+        await pb.collection(targetCollection).update(orderId, updates)
 
-        // 5. Handle Card Storage if requested and successful
+        // 5. Handle Card Storage
         const cardId = params.pg_card_id
-        const userUserId = params.pg_user_id // We sent this in init
+        const userId = params.pg_user_id
 
-        if (isPaid && cardId && userUserId) {
-            console.log('Payment Webhook - Saving card for user:', userUserId)
-            const { error: cardError } = await supabase
-                .from('user_cards')
-                .upsert({
-                    user_id: userUserId,
+        if (isPaid && cardId && userId) {
+            console.log('Payment Webhook - Saving card for user:', userId)
+            try {
+                await pb.collection('user_cards').create({
+                    user_id: userId,
                     pg_card_id: cardId,
                     pg_card_hash: params.pg_card_hash || '****',
                     pg_card_month: params.pg_card_month,
                     pg_card_year: params.pg_card_year,
                     bank_name: params.pg_bank,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'user_id, pg_card_id' })
-            
-            if (cardError) console.error('Payment Webhook - Error saving card:', cardError)
+                })
+            } catch (err) {
+                // If create fails (maybe unique constraint), try update
+                console.log('Card might already exist, attempting update...')
+                const existing = await pb.collection('user_cards').getFirstListItem(`user_id="${userId}" && pg_card_id="${cardId}"`).catch(() => null)
+                if (existing) {
+                    await pb.collection('user_cards').update(existing.id, {
+                        pg_card_hash: params.pg_card_hash || '****',
+                        pg_card_month: params.pg_card_month,
+                        pg_card_year: params.pg_card_year,
+                        bank_name: params.pg_bank,
+                    })
+                }
+            }
         }
 
-        // 4. Respond to Freedom Pay (they expect XML response usually)
+        // 6. Respond to Freedom Pay
         return new Response(`
             <?xml version="1.0" encoding="utf-8"?>
             <response>

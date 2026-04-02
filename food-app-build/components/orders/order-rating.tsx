@@ -5,7 +5,7 @@ import { Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -33,7 +33,6 @@ export function OrderRating({
     const [comment, setComment] = useState(initialComment)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [submitted, setSubmitted] = useState(initialRating > 0)
-    const supabase = createClient()
 
     const handleSubmit = async () => {
         if (rating === 0) {
@@ -52,24 +51,16 @@ export function OrderRating({
                 commentLength: comment.length 
             })
 
-            const { error, data } = await supabase
-                .from('reviews')
-                .insert({
-                    cafe_id: restaurantId,
-                    customer_name: customerName,
-                    rating,
-                    comment,
-                    order_id: orderId || null,
-                    reservation_id: reservationId || null,
-                })
-                .select()
+            const record = await pb.collection('reviews').create({
+                cafe_id: restaurantId,
+                customer_name: customerName,
+                rating,
+                comment,
+                order_id: orderId || null,
+                reservation_id: reservationId || null,
+            });
 
-            if (error) {
-                console.error('[OrderRating] Supabase error:', error)
-                throw error
-            }
-
-            console.log('[OrderRating] Review submitted successfully:', data)
+            console.log('[OrderRating] Review submitted successfully:', record)
             setSubmitted(true)
             toast.success(t.orders.reviewThanksToast)
         } catch (error: any) {

@@ -4,7 +4,7 @@ import { Header } from '@/components/layout/header'
 import Link from 'next/link'
 import { SearchBar } from '@/components/home/search-bar'
 import { RestaurantSection } from '@/components/home/restaurant-section'
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 import { X, Search, Store, Utensils } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MenuItemCard } from '@/components/restaurant/menu-item-card'
@@ -26,78 +26,39 @@ export default async function RestaurantsPage({
   }>
 }) {
   const { category, tab, city, minPrice, maxPrice, sort, restaurantId, q } = await searchParams
-  const supabase = await createClient()
 
-  // ─────────────────────────────────────────────
-  // Fetch Filter Data (Cities, Categories, Restaurants)
-  // ─────────────────────────────────────────────
-  const [
-    { data: rawCategories },
-    { data: allCities },
-    { data: allRestaurants }
-  ] = await Promise.all([
-    supabase.from('categories').select('*').order('sort_order'),
-    supabase.from('restaurants').select('city').not('city', 'is', null),
-    supabase.from('restaurants').select('id, name_ru, name_kk')
+  // 1. Fetch Filter Data
+  const [categories, restaurantsList] = await Promise.all([
+    pb.collection('categories').getFullList({ sort: 'sort_order' }),
+    pb.collection('restaurants').getFullList({ fields: 'id, city, name_ru, name_kk' })
   ])
 
   // Deduplicate categories by name
-  const allCategories = Array.from(new Map(rawCategories?.map(c => [c.name_ru, c]) || []).values())
-  const uniqueCities = Array.from(new Set(allCities?.map(r => r.city) || []))
+  const allCategories = Array.from(new Map(categories?.map(c => [c.name_ru, c]) || []).values())
+  const uniqueCities = Array.from(new Set(restaurantsList?.map(r => r.city).filter(Boolean) || []))
 
-  // ─────────────────────────────────────────────
-  // КАТЕГОРИЯ ТАҢДАЛСА → тек тамақтарды шығару
-  // ─────────────────────────────────────────────
+  // 2. Handle Filtered View (Category, Price, etc.)
   if (category || minPrice || maxPrice || restaurantId || (tab === 'food' && sort)) {
-    let foodQuery = supabase
-      .from('menu_items')
-      .select('*, restaurants!inner(id, name_ru, name_en, name_kk, city, rating, is_open)')
-      .eq('is_available', true)
-      .eq('restaurants.is_open', true)
-
+    let filterParts = ['is_available = true']
+    
     if (category) {
-      const { data: catRows } = await supabase
-        .from('categories')
-        .select('id')
-        .or(`name_kk.eq.${category},name_ru.eq.${category}`)
-      if (catRows && catRows.length > 0) {
-        foodQuery = foodQuery.in('category_id', catRows.map(c => c.id))
-      }
+        const catFilter = categories.filter(c => c.name_kk === category || c.name_ru === category).map(c => `category_id = "${c.id}"`).join(' || ')
+        if (catFilter) filterParts.push(`(${catFilter})`)
     }
+    
+    if (city) filterParts.push(`cafe_id.city = "${city}"`)
+    if (restaurantId) filterParts.push(`cafe_id = "${restaurantId}"`)
+    if (minPrice) filterParts.push(`price >= ${minPrice}`)
+    if (maxPrice) filterParts.push(`price <= ${maxPrice}`)
+    if (q) filterParts.push(`(name_kk ~ "${q}" || name_ru ~ "${q}" || description_kk ~ "${q}" || description_ru ~ "${q}")`)
 
-    if (city) {
-      foodQuery = foodQuery.eq('restaurants.city', city)
-    }
-    if (restaurantId) {
-      foodQuery = foodQuery.eq('cafe_id', restaurantId)
-    }
-
-    if (minPrice) {
-      foodQuery = foodQuery.gte('price', parseFloat(minPrice))
-    }
-
-    if (maxPrice) {
-      foodQuery = foodQuery.lte('price', parseFloat(maxPrice))
-    }
-
-    if (q) {
-      foodQuery = foodQuery.or(`name_kk.ilike.%${q}%,name_ru.ilike.%${q}%,description_kk.ilike.%${q}%,description_ru.ilike.%${q}%`)
-    }
-
-    // Sorting
-    if (sort === 'price_asc') {
-      foodQuery = foodQuery.order('price', { ascending: true })
-    } else if (sort === 'price_desc') {
-      foodQuery = foodQuery.order('price', { ascending: false })
-    } else if (sort === 'rating_desc') {
-      // Rating sort is tricky with !inner, might need to sort in memory or refine query
-      // For now, default to sort_order
-      foodQuery = foodQuery.order('sort_order', { ascending: true })
-    } else {
-      foodQuery = foodQuery.order('sort_order', { ascending: true })
-    }
-
-    const { data: menuItems } = await foodQuery.limit(60)
+    const sortOrder = sort === 'price_asc' ? 'price' : sort === 'price_desc' ? '-price' : 'sort_order'
+    
+    const menuItems = await pb.collection('menu_items').getFullList({
+        filter: filterParts.join(' && '),
+        sort: sortOrder,
+        expand: 'cafe_id'
+    })
 
     return (
       <div className="flex flex-col min-h-screen pb-16 bg-muted/20">
@@ -107,16 +68,15 @@ export default async function RestaurantsPage({
             <div className="flex gap-2">
               <div className="flex-1"><SearchBar /></div>
               <FilterDrawer
-                categories={allCategories || []}
-                cities={uniqueCities}
-                restaurants={allRestaurants || []}
+                categories={allCategories as any[] || []}
+                cities={uniqueCities as string[]}
+                restaurants={restaurantsList as any[] || []}
                 currentParams={{ category, city, minPrice, maxPrice, sort, restaurantId }}
               />
             </div>
 
-            {/* Active Filters Bar */}
             {(category || city || minPrice || maxPrice || restaurantId) && (
-              <div className="flex flex-wrap gap-2 items-center bg-background p-3 rounded-2xl border border-muted shadow-sm animate-in fade-in slide-in-from-top duration-300">
+              <div className="flex flex-wrap gap-2 items-center bg-background p-3 rounded-2xl border border-muted shadow-sm">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-1">Сүзгілер:</span>
                 {category && <Badge variant="secondary" className="rounded-lg py-1 px-3 bg-primary/10 text-primary border-none">{category}</Badge>}
                 {q && <Badge variant="secondary" className="rounded-lg py-1 px-3 bg-amber-100 text-amber-700 border-none">"{q}"</Badge>}
@@ -131,7 +91,6 @@ export default async function RestaurantsPage({
               </div>
             )}
 
-            {/* Тамақтар тізімі */}
             {menuItems && menuItems.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
                 {menuItems.map((item: any) => (
@@ -140,8 +99,8 @@ export default async function RestaurantsPage({
                     layout="horizontal"
                     item={{
                       ...item,
-                      restaurant: item.restaurants
-                        ? { id: item.restaurants.id, name_ru: item.restaurants.name_ru, name_en: item.restaurants.name_en }
+                      restaurant: item.expand?.cafe_id
+                        ? { id: item.expand.cafe_id.id, name_ru: item.expand.cafe_id.name_ru, name_en: item.expand.cafe_id.name_en }
                         : undefined,
                     }}
                   />
@@ -149,13 +108,9 @@ export default async function RestaurantsPage({
               </div>
             ) : (
               <div className="text-center py-20 bg-background rounded-[2rem] border-2 border-dashed border-muted">
-                <div className="text-muted-foreground/20 mb-4 animate-pulse">
-                  <Search className="w-16 h-16 mx-auto" />
-                </div>
+                <div className="text-muted-foreground/20 mb-4 animate-pulse"><Search className="w-16 h-16 mx-auto" /></div>
                 <h3 className="text-lg font-bold">Тамақ табылмады</h3>
-                <p className="text-sm text-muted-foreground max-w-[200px] mx-auto mt-2 italic">
-                  Таңдалған параметрлер бойынша нәтиже жоқ. Сүзгілерді өзгертіп көріңіз.
-                </p>
+                <p className="text-sm text-muted-foreground max-w-[200px] mx-auto mt-2 italic text-center">Таңдалған параметрлер бойынша нәтиже жоқ.</p>
               </div>
             )}
           </div>
@@ -164,81 +119,52 @@ export default async function RestaurantsPage({
     )
   }
 
-  // ─────────────────────────────────────────────
-  // КАТЕГОРИЯ ЖОҚ (және басқалар) → Барлығы | Кафе | Тамақ tabs
-  // ─────────────────────────────────────────────
+  // 3. Tabbed View
   const activeTab = tab || 'all'
+  
+  let resFilterParts = ['is_open = true']
+  if (city) resFilterParts.push(`city = "${city}"`)
+  if (q) resFilterParts.push(`(name_kk ~ "${q}" || name_ru ~ "${q}" || description_kk ~ "${q}" || description_ru ~ "${q}")`)
 
-  let restaurantQuery = supabase.from('restaurants').select('*')
-  if (city) restaurantQuery = restaurantQuery.eq('city', city)
-  if (q) {
-    restaurantQuery = restaurantQuery.or(`name_kk.ilike.%${q}%,name_ru.ilike.%${q}%,description_kk.ilike.%${q}%,description_ru.ilike.%${q}%`)
-  }
+  let menuFilterParts = ['is_available = true']
+  if (q) menuFilterParts.push(`(name_kk ~ "${q}" || name_ru ~ "${q}" || description_kk ~ "${q}" || description_ru ~ "${q}")`)
 
-  let menuItemsQuery = supabase
-    .from('menu_items')
-    .select('*, restaurants(id, name_ru, name_en, name_kk)')
-    .eq('is_available', true)
-
-  if (q) {
-    menuItemsQuery = menuItemsQuery.or(`name_kk.ilike.%${q}%,name_ru.ilike.%${q}%,description_kk.ilike.%${q}%,description_ru.ilike.%${q}%`)
-  }
-
-  const [{ data: restaurants }, { data: menuItems }] = await Promise.all([
-    restaurantQuery
-      .eq('is_open', true)
-      .order('rating', { ascending: false })
-      .order('created_at', { ascending: false }),
-    menuItemsQuery.order('sort_order', { ascending: true }).limit(60)
+  const [restaurants, menuItems] = await Promise.all([
+    pb.collection('restaurants').getFullList({
+        filter: resFilterParts.join(' && '),
+        sort: '-rating,-created_at'
+    }),
+    pb.collection('menu_items').getFullList({
+        filter: menuFilterParts.join(' && '),
+        sort: 'sort_order',
+        expand: 'cafe_id'
+    })
   ])
 
   return (
     <div className="flex flex-col min-h-screen pb-16 bg-muted/20">
       <Header title="Мәзірлер" />
-
       <main className="flex-1 overflow-auto">
         <div className="max-w-screen-xl mx-auto px-4 py-4 space-y-6">
           <div className="flex gap-2">
             <div className="flex-1"><SearchBar /></div>
             <FilterDrawer
-              categories={allCategories || []}
-              cities={uniqueCities}
-              restaurants={allRestaurants || []}
+              categories={allCategories as any[] || []}
+              cities={uniqueCities as string[]}
+              restaurants={restaurantsList as any[] || []}
               currentParams={{ category, city, minPrice, maxPrice, sort, restaurantId }}
             />
           </div>
 
-          {/* ── Tabs ── */}
           <div className="flex gap-1 bg-background/50 backdrop-blur-sm rounded-2xl p-1.5 border border-muted shadow-sm overflow-x-auto no-scrollbar">
-            <Link
-              href="/restaurants?tab=all"
-              className={`flex-1 min-w-[80px] py-3 rounded-xl text-sm font-bold text-center transition-all ${activeTab === 'all' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' : 'text-muted-foreground hover:bg-muted'
-                }`}
-            >
-              Барлығы
-            </Link>
-            <Link
-              href="/restaurants?tab=cafes"
-              className={`flex-1 min-w-[80px] py-3 rounded-xl text-sm font-bold text-center transition-all ${activeTab === 'cafes' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' : 'text-muted-foreground hover:bg-muted'
-                }`}
-            >
-              Кафе
-            </Link>
-            <Link
-              href="/restaurants?tab=food"
-              className={`flex-1 min-w-[80px] py-3 rounded-xl text-sm font-bold text-center transition-all ${activeTab === 'food' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' : 'text-muted-foreground hover:bg-muted'
-                }`}
-            >
-              Тамақ
-            </Link>
+            <Link href="/restaurants?tab=all" className={`flex-1 min-w-[80px] py-3 rounded-xl text-sm font-bold text-center transition-all ${activeTab === 'all' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' : 'text-muted-foreground hover:bg-muted'}`}>Барлығы</Link>
+            <Link href="/restaurants?tab=cafes" className={`flex-1 min-w-[80px] py-3 rounded-xl text-sm font-bold text-center transition-all ${activeTab === 'cafes' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' : 'text-muted-foreground hover:bg-muted'}`}>Кафе</Link>
+            <Link href="/restaurants?tab=food" className={`flex-1 min-w-[80px] py-3 rounded-xl text-sm font-bold text-center transition-all ${activeTab === 'food' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-[1.02]' : 'text-muted-foreground hover:bg-muted'}`}>Тамақ</Link>
           </div>
 
-          {/* All tab */}
           {activeTab === 'all' && (
             <div className="space-y-10">
-              {restaurants && restaurants.length > 0 && (
-                <RestaurantSection restaurants={restaurants} />
-              )}
+              {restaurants && restaurants.length > 0 && <RestaurantSection restaurants={restaurants as any[]} />}
               {menuItems && menuItems.length > 0 && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between px-1">
@@ -252,8 +178,8 @@ export default async function RestaurantsPage({
                         layout="horizontal"
                         item={{
                           ...item,
-                          restaurant: item.restaurants
-                            ? { id: item.restaurants.id, name_ru: item.restaurants.name_ru, name_en: item.restaurants.name_en }
+                          restaurant: item.expand?.cafe_id
+                            ? { id: item.expand.cafe_id.id, name_ru: item.expand.cafe_id.name_ru, name_en: item.expand.cafe_id.name_en }
                             : undefined,
                         }}
                       />
@@ -264,21 +190,17 @@ export default async function RestaurantsPage({
             </div>
           )}
 
-          {/* Кафе tab */}
           {activeTab === 'cafes' && (
             restaurants && restaurants.length > 0 ? (
-              <RestaurantSection restaurants={restaurants} />
+              <RestaurantSection restaurants={restaurants as any[]} />
             ) : (
               <div className="text-center py-16 bg-background rounded-[2rem] border-2 border-dashed border-muted">
-                <div className="text-muted-foreground/20 mb-3">
-                  <Store className="w-12 h-12 mx-auto" />
-                </div>
-                <p className="text-muted-foreground font-medium italic">Кафелер табылмады</p>
+                <div className="text-muted-foreground/20 mb-3"><Store className="w-12 h-12 mx-auto" /></div>
+                <p className="text-muted-foreground font-medium italic text-center">Кафелер табылмады</p>
               </div>
             )
           )}
 
-          {/* Тамақ tab */}
           {activeTab === 'food' && (
             menuItems && menuItems.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -288,8 +210,8 @@ export default async function RestaurantsPage({
                     layout="horizontal"
                     item={{
                       ...item,
-                      restaurant: item.restaurants
-                        ? { id: item.restaurants.id, name_ru: item.restaurants.name_ru, name_en: item.restaurants.name_en }
+                      restaurant: item.expand?.cafe_id
+                        ? { id: item.expand.cafe_id.id, name_ru: item.expand.cafe_id.name_ru, name_en: item.expand.cafe_id.name_en }
                         : undefined,
                     }}
                   />
@@ -297,16 +219,13 @@ export default async function RestaurantsPage({
               </div>
             ) : (
               <div className="text-center py-16 bg-background rounded-[2rem] border-2 border-dashed border-muted">
-                <div className="text-muted-foreground/20 mb-3">
-                  <Utensils className="w-12 h-12 mx-auto" />
-                </div>
-                <p className="text-muted-foreground font-medium italic">Тамақтар табылмады</p>
+                <div className="text-muted-foreground/20 mb-3"><Utensils className="w-12 h-12 mx-auto" /></div>
+                <p className="text-muted-foreground font-medium italic text-center">Тамақтар табылмады</p>
               </div>
             )
           )}
         </div>
       </main>
-
     </div>
   )
 }

@@ -4,15 +4,12 @@ import { motion } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Star, Clock, Trophy } from 'lucide-react'
-import { Database } from '@/lib/supabase/types'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
-type Restaurant = Database['public']['Tables']['restaurants']['Row']
-
 interface FeaturedSliderProps {
-    restaurants: Restaurant[]
+    restaurants: any[]
 }
 
 export function FeaturedSlider({ restaurants }: FeaturedSliderProps) {

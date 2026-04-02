@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { uploadFile } from '@/lib/storage'
+import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const cookieStore = await cookies()
+    const token = cookieStore.get('pb_auth')?.value || cookieStore.get('auth_token')?.value
 
-    if (!user) {
+    if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -22,13 +22,13 @@ export async function POST(request: NextRequest) {
     const folder = formData.get('folder') as string || 'images'
     const key = `${folder}/${fileName}`
 
-    console.log('--- Uploading to Supabase Storage (food-app-build) ---')
+    console.log('--- Uploading to MinIO Storage (Dokploy) ---')
     const url = await uploadFile(file, key)
     console.log('Upload Success:', url)
 
     return NextResponse.json({ url })
   } catch (error: any) {
-    console.error('[v0] Upload error:', error)
+    console.error('[Upload] error:', error)
     return NextResponse.json(
       { error: error.message || 'Upload failed' },
       { status: 500 }

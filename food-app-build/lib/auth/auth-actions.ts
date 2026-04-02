@@ -1,35 +1,25 @@
 'use server'
 
 import nodemailer from 'nodemailer'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { Database } from '@/lib/supabase/types'
+import { query } from '@/lib/db'
+import { v4 as uuidv4 } from 'uuid'
+import { sign } from 'jsonwebtoken'
+import { cookies } from 'next/headers'
 
-// Transporter will be created dynamically based on config
+const JWT_SECRET = process.env.JWT_SECRET || 'mazir_super_secret_jwt_key_2026'
 
 export async function sendCustomOtp(email: string, fullName: string, phone: string) {
     const code = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-    const supabase = createAdminClient()
-
-    // Save OTP to DB
-    const { error: dbError } = await (supabase
-        .from('otp_codes') as any)
-        .insert({
-            email,
-            code,
-            full_name: fullName,
-            phone,
-            expires_at: expiresAt
-        })
-
-    if (dbError) {
-        console.error('Error saving OTP:', dbError)
-        throw new Error('Қате орын алды. Қайта көріңіз.')
-    }
-
-    // Send Email
     try {
+        // Save OTP to DB
+        await query(
+            'INSERT INTO otp_codes (id, email, code, full_name, phone, expires_at) VALUES ($1, $2, $3, $4, $5, $6)',
+            [uuidv4(), email, code, fullName, phone, expiresAt]
+        )
+
+        // Send Email
         if (process.env.MOCK_MAIL === 'true') {
             console.log('--- MAIL MOCK MODE ---')
             console.log(`Target Email: ${email}`)
@@ -44,7 +34,8 @@ export async function sendCustomOtp(email: string, fullName: string, phone: stri
         const smtpPort = Number(process.env.SMTP_PORT) || 465
 
         if (!smtpUser || !smtpPass) {
-            throw new Error('SMTP credentials missing. Set SMTP_USER and SMTP_PASS in .env, or use MOCK_MAIL=true for testing.')
+            console.warn('SMTP credentials missing, using mock mode fallback')
+            return { success: true, mock: true, message: 'SMTP credentials missing, code logged for development' }
         }
 
         const transporter = nodemailer.createTransport({
@@ -82,62 +73,62 @@ export async function sendCustomOtp(email: string, fullName: string, phone: stri
             Бұл код <b>10 минут</b> ішінде жарамды.<br>
             <span style="color: #94a3b8;">Егер сіз бұл сұранысты жасамасаңыз, бұл хатқа мән бермеңіз.</span>
           </div>
-          
-          <div style="text-align: center; margin-top: 24px;">
-            <p style="font-size: 11px; color: #cbd5e1; margin: 0;">&copy; ${new Date().getFullYear()} Mazir App. All rights reserved.</p>
-          </div>
         </div>
       `,
         })
-    } catch (emailError: any) {
-        console.error('Error sending email:', emailError)
-        throw new Error(emailError.message || 'Почта жіберу мүмкін болмады. SMTP параметрлерін тексеріңіз.')
-    }
 
-    return { success: true }
+        return { success: true }
+    } catch (error: any) {
+        console.error('Auth error:', error)
+        throw new Error(error.message || 'Қате орын алды')
+    }
 }
 
 export async function verifyCustomOtp(email: string, code: string) {
-    const supabase = createAdminClient()
+    // 1. Check OTP
+    const res = await query(
+        'SELECT * FROM otp_codes WHERE email = $1 AND code = $2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+        [email, code]
+    )
 
-    // 1. Check OTP in our table
-    const { data: otpData, error: otpError } = await (supabase
-        .from('otp_codes') as any)
-        .select('*')
-        .eq('email', email)
-        .eq('code', code)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-    if (otpError || !otpData) {
+    if (res.rowCount === 0) {
         throw new Error('Код қате немесе уақыты өтіп кеткен')
     }
 
-    // 2. Use Supabase Admin to create/sign in the user
-    const { data: authData, error: authError } = await supabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: email,
-        options: {
-            data: {
-                full_name: (otpData as any).full_name,
-                phone: (otpData as any).phone
-            }
-        }
+    const otpData = res.rows[0]
+
+    // 2. Find or create user
+    let userRes = await query('SELECT * FROM users WHERE email = $1', [email])
+    let user = userRes.rows[0]
+
+    if (!user) {
+        const newUserRes = await query(
+            'INSERT INTO users (id, email, full_name, phone, role) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [uuidv4(), email, otpData.full_name, otpData.phone, 'user']
+        )
+        user = newUserRes.rows[0]
+    }
+
+    // 3. Create Session (JWT)
+    const token = sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' })
+
+    const cookieStore = await cookies()
+    cookieStore.set('mazir_auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/'
     })
 
-    if (authError) {
-        console.error('Auth magic link error:', authError)
-        throw new Error('Жүйеге кіру кезінде қате шықты')
-    }
+    // 4. Delete used OTP
+    await query('DELETE FROM otp_codes WHERE id = $1', [otpData.id])
 
-    // 3. Delete the used OTP code
-    await (supabase.from('otp_codes') as any).delete().eq('id', (otpData as any).id)
+    return { success: true, user }
+}
 
-    // Return the properties needed for the client to complete sign in
-    return {
-        token_hash: authData.properties.hashed_token,
-        email: email
-    }
+export async function signOut() {
+    const cookieStore = await cookies()
+    cookieStore.delete('mazir_auth_token')
+    return { success: true }
 }

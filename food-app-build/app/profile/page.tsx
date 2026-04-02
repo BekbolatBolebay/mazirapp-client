@@ -1,10 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 import ProfileClient from './profile-client'
 import { redirect } from 'next/navigation'
 
 export default async function ProfilePage() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = pb.authStore.model
 
     if (!user) {
         redirect('/login')
@@ -15,28 +14,12 @@ export default async function ProfilePage() {
         redirect('/login?next=/profile')
     }
 
-    // Try clients table first
-    let { data: profile } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', user.id)
-        .single()
+    // In PocketBase, profile is the user record itself
+    const profile = user
 
-    if (!profile) {
-        // Fallback to staff_profiles table
-        const { data: legacyProfile } = await supabase
-            .from('staff_profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single()
-        profile = legacyProfile
-    }
-
-    const { data: restaurant } = await supabase
-        .from('restaurants')
-        .select('id, name_ru, name_kk')
-        .eq('owner_id', user.id)
-        .single()
+    const restaurant = await pb.collection('restaurants')
+        .getFirstListItem(`owner_id = "${user.id}"`)
+        .catch(() => null)
 
     return <ProfileClient user={user} profile={profile} restaurant={restaurant} />
 }

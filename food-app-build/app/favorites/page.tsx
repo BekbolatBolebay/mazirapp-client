@@ -1,26 +1,17 @@
-'use client'
-
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/layout/header'
 import { RestaurantSection } from '@/components/home/restaurant-section'
 import { FoodSection } from '@/components/home/food-section'
 import { getLocalFavorites, getLocalFoodFavorites } from '@/lib/storage/local-storage'
-import { createClient } from '@/lib/supabase/client'
-import { Database } from '@/lib/supabase/types'
+import pb from '@/utils/pocketbase'
 import { Loader2 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 
-type Restaurant = Database['public']['Tables']['restaurants']['Row']
-type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
-  restaurants: Restaurant | null
-}
-
 export default function FavoritesPage() {
   const { t } = useI18n()
-  const supabase = createClient()
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([])
-  const [foodItems, setFoodItems] = useState<MenuItem[]>([])
+  const [restaurants, setRestaurants] = useState<any[]>([])
+  const [foodItems, setFoodItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'food' | 'cafes'>('cafes')
 
@@ -30,17 +21,32 @@ export default function FavoritesPage() {
       const favoriteFoodIds = getLocalFoodFavorites()
 
       try {
+        const fetchRestaurants = async () => {
+          if (favoriteIds.length === 0) return []
+          const filter = favoriteIds.map(id => `id="${id}"`).join(' || ')
+          return await pb.collection('restaurants').getFullList({ filter })
+        }
+
+        const fetchFood = async () => {
+          if (favoriteFoodIds.length === 0) return []
+          const filter = favoriteFoodIds.map(id => `id="${id}"`).join(' || ')
+          return await pb.collection('menu_items').getFullList({ 
+            filter,
+            expand: 'cafe_id'
+          })
+        }
+
         const [resRestaurants, resFood] = await Promise.all([
-          favoriteIds.length > 0
-            ? supabase.from('restaurants').select('*').in('id', favoriteIds)
-            : Promise.resolve({ data: [] }),
-          favoriteFoodIds.length > 0
-            ? supabase.from('menu_items').select('*, restaurants(*)').in('id', favoriteFoodIds)
-            : Promise.resolve({ data: [] })
+          fetchRestaurants(),
+          fetchFood()
         ])
 
-        if (resRestaurants.data) setRestaurants(resRestaurants.data)
-        if (resFood.data) setFoodItems(resFood.data as any)
+        setRestaurants(resRestaurants)
+        // Map food items to include restaurant info from expand
+        setFoodItems(resFood.map(item => ({
+          ...item,
+          restaurants: item.expand?.cafe_id || null
+        })))
       } catch (error) {
         console.error('Error loading favorites:', error)
       } finally {

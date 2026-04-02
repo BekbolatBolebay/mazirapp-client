@@ -1,31 +1,42 @@
-import { createClient } from './supabase/server'
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const s3Client = new S3Client({
+    endpoint: process.env.MINIO_ENDPOINT || "http://mazir-minio-api.traefik.me",
+    region: "us-east-1", // MinIO doesn't care much about region but SDK requires it
+    credentials: {
+        accessKeyId: process.env.MINIO_ACCESS_KEY || "minioadmin",
+        secretAccessKey: process.env.MINIO_SECRET_KEY || "rsnfygmo8cmla1mu",
+    },
+    forcePathStyle: true, // Required for MinIO
+});
+
+const BUCKET_NAME = process.env.MINIO_BUCKET || "mazir-assets";
+const PUBLIC_URL = process.env.MINIO_PUBLIC_URL || "http://mazir-minio-api.traefik.me";
 
 /**
- * Uploads a file to Supabase Storage
+ * Uploads a file to MinIO Storage
  * @param file The file object to upload
- * @param path The destination path in the bucket (e.g. 'images/filename.jpg')
+ * @param path The destination path (key)
  * @returns The public URL of the uploaded file
  */
 export async function uploadFile(file: File, path: string) {
-    const supabase = await createClient()
-    const bucketName = 'mazir'
+    console.log('MinIO Upload:', path);
 
-    const { data, error } = await supabase.storage
-        .from(bucketName)
-        .upload(path, file, {
-            upsert: true,
-            contentType: file.type
-        })
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-    if (error) {
-        console.error('Supabase Storage Upload Error:', error)
-        throw error
+    const command = new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: path,
+        Body: buffer,
+        ContentType: file.type,
+    });
+
+    try {
+        await s3Client.send(command);
+        // Construct the public URL
+        return `${PUBLIC_URL}/${BUCKET_NAME}/${path}`;
+    } catch (error) {
+        console.error("MinIO Upload Error:", error);
+        throw error;
     }
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-        .from(bucketName)
-        .getPublicUrl(data.path)
-
-    return publicUrl
 }

@@ -5,7 +5,6 @@ import Image from 'next/image'
 import { Plus, Minus, X, ShoppingCart, MapPin, Utensils, Star, Clock, Info, ChevronRight, Share2, Plus as PlusIcon } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { addToLocalCart, LocalCartItem } from '@/lib/storage/local-storage'
-import { Database } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
@@ -13,22 +12,13 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/auth-context'
 import { AuthModal } from '@/components/auth/auth-modal'
 
-type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
-  restaurant?: {
-    name_ru: string
-    name_en: string
-    id?: string
-  }
-  is_combo?: boolean
-}
-
 export function MenuItemCard({ 
   item, 
   isOpen = true, 
   isCombo = false,
   layout = 'grid'
 }: { 
-  item: MenuItem, 
+  item: any, 
   isOpen?: boolean, 
   isCombo?: boolean,
   layout?: 'grid' | 'horizontal'

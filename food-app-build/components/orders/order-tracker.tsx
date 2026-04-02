@@ -11,7 +11,7 @@ import {
     Flame,
     Loader2
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -50,41 +50,33 @@ export function OrderTracker({ orderId, initialStatus, initialUpdatedAt, initial
     }, [])
 
     useEffect(() => {
-        const supabase = createClient()
-        const channel = supabase
-            .channel(`order-tracker-${orderId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'orders',
-                    filter: `id=eq.${orderId}`
-                },
-                (payload) => {
-                    const newStatus = payload.new.status
-                    if (newStatus !== status || payload.new.estimated_ready_at !== estimatedReadyAt || payload.new.delivery_fee !== deliveryFee) {
-                        setStatus(newStatus)
-                        setUpdatedAt(payload.new.updated_at)
-                        setEstimatedReadyAt(payload.new.estimated_ready_at)
-                        setDeliveryFee(payload.new.delivery_fee)
-                        setTotalAmount(payload.new.total_amount)
+        // Real-time updates using PocketBase
+        const unsubscribePromise = pb.collection('orders').subscribe(orderId, (e) => {
+            if (e.action === 'update') {
+                const record = e.record
+                const newStatus = record.status
+                
+                if (newStatus !== status || record.estimated_ready_at !== estimatedReadyAt || record.delivery_fee !== deliveryFee) {
+                    setStatus(newStatus)
+                    setUpdatedAt(record.updated)
+                    setEstimatedReadyAt(record.estimated_ready_at)
+                    setDeliveryFee(record.delivery_fee)
+                    setTotalAmount(record.total_amount)
 
-                        if (newStatus !== status) {
-                            const translatedStatus = (t.orders.status as any)[newStatus] || newStatus
-                            toast.info(`${t.orders.statusChangedToast}${translatedStatus}`)
-                        }
+                    if (newStatus !== status) {
+                        const translatedStatus = (t.orders.status as any)[newStatus] || newStatus
+                        toast.info(`${t.orders.statusChangedToast}${translatedStatus}`)
+                    }
 
-                        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                            navigator.vibrate([200, 100, 200])
-                        }
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                        navigator.vibrate([200, 100, 200])
                     }
                 }
-            )
-            .subscribe()
+            }
+        })
 
         return () => {
-            supabase.removeChannel(channel)
+            unsubscribePromise.then(unsub => unsub())
         }
     }, [orderId, status, t])
 
@@ -136,22 +128,18 @@ export function OrderTracker({ orderId, initialStatus, initialUpdatedAt, initial
 
     const handleApproveQuote = async () => {
         setIsUpdating(true)
-        const supabase = createClient()
-        const { error } = await supabase
-            .from('orders')
-            .update({
+        try {
+            await pb.collection('orders').update(orderId, {
                 status: 'awaiting_payment',
                 updated_at: new Date().toISOString()
             })
-            .eq('id', orderId)
-
-        if (error) {
-            toast.error(locale === 'ru' ? 'Ошибка при сохранении' : 'Сақтау кезінде қате шықты')
-        } else {
             toast.success(locale === 'ru' ? 'Принято!' : 'Қабылданды!')
             setStatus('awaiting_payment')
+        } catch (error) {
+            toast.error(locale === 'ru' ? 'Ошибка при сохранении' : 'Сақтау кезінде қате шықты')
+        } finally {
+            setIsUpdating(false)
         }
-        setIsUpdating(false)
     }
 
     return (

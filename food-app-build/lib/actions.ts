@@ -1,6 +1,6 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/admin'
+import pb from '@/utils/pocketbase'
 import webpush from 'web-push'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
@@ -19,28 +19,26 @@ export async function notifyAdmin(data: any, type: 'order' | 'booking', restaura
     try {
         const { messaging } = await import('./firebase-admin')
         
-        // Use Admin client to bypass RLS and support guest orders (who don't have a session)
-        const supabase = createAdminClient() as any
-
-        // 1. Determine which admin to notify. 
-        let adminQuery = supabase
-            .from('staff_profiles')
-            .select('push_subscription, fcm_token')
-            .eq('role', 'admin')
+        // 1. Determine which admin to notify via PocketBase
+        let admins: any[] = []
 
         if (restaurantId) {
-            const { data: restaurant } = await supabase
-                .from('restaurants')
-                .select('owner_id')
-                .eq('id', restaurantId)
-                .single()
-
+            const restaurant = await pb.collection('restaurants').getOne(restaurantId)
             if (restaurant?.owner_id) {
-                adminQuery = adminQuery.eq('id', restaurant.owner_id)
+                const owner = await pb.collection('users').getOne(restaurant.owner_id)
+                if (owner) admins.push(owner)
             }
+        } else {
+            // Global admins
+            admins = await pb.collection('users').getFullList({
+                filter: 'role = "admin"'
+            })
         }
 
-        const { data: admins } = await adminQuery
+        if (admins.length === 0) {
+            console.log('No admins found to notify')
+            return
+        }
 
         if (!admins || admins.length === 0) {
             console.log('No admins found for this restaurant')

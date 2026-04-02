@@ -3,13 +3,10 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { useI18n } from '@/lib/i18n/i18n-context'
-import { Database } from '@/lib/supabase/types'
 import { Badge } from '@/components/ui/badge'
 import { motion, AnimatePresence } from 'framer-motion'
 
-type Promotion = Database['public']['Tables']['promotions']['Row']
-
-export function PromotionBanner({ promotions }: { promotions: Promotion[] }) {
+export function PromotionBanner({ promotions }: { promotions: any[] }) {
   const { locale } = useI18n()
   const [currentIndex, setCurrentIndex] = useState(0)
 

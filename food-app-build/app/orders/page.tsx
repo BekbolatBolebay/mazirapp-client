@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { getUserOrders, getUserReservations, subscribeToOrders } from '@/lib/pocketbase/orders'
 import { Header } from '@/components/layout/header'
 import { OrderCard } from '@/components/orders/order-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -11,11 +11,13 @@ import { useI18n } from '@/lib/i18n/i18n-context'
 import { Loader2, Package, CheckCircle2, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ReservationCard } from '@/components/orders/reservation-card'
+import { useAuth } from '@/lib/auth/auth-context'
 
 export default function OrdersPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { t, locale } = useI18n()
+  const { user } = useAuth()
   const initialTab = searchParams.get('tab') || 'all'
   const [activeTab, setActiveTab] = useState(initialTab)
   const [orders, setOrders] = useState<any[]>([])
@@ -23,64 +25,16 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
 
   const fetchAllData = async () => {
-    const supabase = createClient()
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const savedPhone = localStorage.getItem('customer_phone')
+      const savedPhone = localStorage.getItem('customer_phone') || undefined
 
-      // Fetch Orders
-      let userOrders: any[] = []
-      if (user) {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-        if (error) console.error('[Orders] User orders error:', error)
-        if (data) userOrders = data
-      }
+      // Fetch Orders using PocketBase
+      const uniqueOrders = await getUserOrders(user?.id, savedPhone)
+      setOrders(uniqueOrders)
 
-      let phoneOrders: any[] = []
-      if (savedPhone) {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('customer_phone', savedPhone)
-          .order('created_at', { ascending: false })
-        if (error) console.error('[Orders] Phone orders error:', error)
-        if (data) phoneOrders = data
-      }
-
-      const uniqueOrders = Array.from(new Map([...userOrders, ...phoneOrders].map(o => [o.id, o])).values())
-      setOrders(uniqueOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-
-      // Fetch Reservations
-      let userReservations: any[] = []
-      if (user) {
-        const { data } = await supabase
-          .from('reservations')
-          .select('*, restaurants!cafe_id (*)')
-          .eq('customer_id', user.id)
-          .order('date', { ascending: false })
-        if (data) userReservations = data
-      }
-
-      let phoneReservations: any[] = []
-      if (savedPhone) {
-        const { data } = await supabase
-          .from('reservations')
-          .select('*, restaurants!cafe_id (*)')
-          .eq('customer_phone', savedPhone)
-          .order('date', { ascending: false })
-        if (data) phoneReservations = data
-      }
-
-      const uniqueReservations = Array.from(new Map([...userReservations, ...phoneReservations].map(r => [r.id, r])).values())
-      setReservations(uniqueReservations.sort((a, b) => {
-        const dateA = new Date(`${a.date}T${a.time}`).getTime()
-        const dateB = new Date(`${b.date}T${b.time}`).getTime()
-        return dateB - dateA
-      }))
+      // Fetch Reservations using PocketBase
+      const uniqueReservations = await getUserReservations(user?.id, savedPhone)
+      setReservations(uniqueReservations)
 
     } catch (err) {
       console.error('Fetch data error:', err)
@@ -91,17 +45,16 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchAllData()
-    const supabase = createClient()
 
-    const ordersChannel = supabase
-      .channel('orders-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchAllData)
-      .subscribe()
+    // Real-time updates using PocketBase
+    const unsubscribe = subscribeToOrders(() => {
+        fetchAllData()
+    })
 
     return () => {
-      supabase.removeChannel(ordersChannel)
+      unsubscribe()
     }
-  }, [])
+  }, [user])
 
   const activeOrders = orders.filter((o) =>
     ['pending', 'new', 'accepted', 'preparing', 'ready', 'awaiting_payment', 'on_the_way', 'delivering'].includes(o.status)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -11,70 +11,34 @@ import { showClientNotification } from '@/lib/client-notification-utils'
 export function OrderStatusListener() {
   const { user } = useAuth()
   const { locale } = useI18n()
-  const unsubscribeRef = useRef<(() => void) | null>(null)
   const lastStatusRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
-    if (!user?.id) {
-      console.log('[OrderStatusListener] No user logged in, skipping setup')
-      return
-    }
+    if (!user?.id) return
 
     console.log('[OrderStatusListener] Setting up real-time listener for user:', user.id)
 
-    const supabase = createClient()
+    const unsubscribePromise = pb.collection('orders').subscribe('*', (e) => {
+      if (e.action === 'update' && e.record.user_id === user.id) {
+        const newOrder = e.record
+        
+        console.log('[OrderStatusListener] Order update received:', {
+          orderId: newOrder.id,
+          orderNumber: newOrder.order_number,
+          newStatus: newOrder.status,
+        })
 
-    const channel = supabase
-      .channel(`order-status-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const newOrder = payload.new as any
-          const oldOrder = payload.old as any
-
-          console.log('[OrderStatusListener] Order update received:', {
-            orderId: newOrder.id,
-            orderNumber: newOrder.order_number,
-            oldStatus: oldOrder?.status,
-            newStatus: newOrder.status,
-            statusChanged: newOrder.status !== oldOrder?.status,
-          })
-
-          // Check if this is a real status change
-          if (newOrder.status !== oldOrder?.status) {
-            // Prevent duplicate notifications for the same order
-            const lastStatus = lastStatusRef.current[newOrder.id]
-            if (lastStatus === newOrder.status) {
-              console.log('[OrderStatusListener] Duplicate status update ignored:', newOrder.status)
-              return
-            }
-            lastStatusRef.current[newOrder.id] = newOrder.status
-
-            showNotification(newOrder.status, newOrder.order_number, newOrder.id)
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log('[OrderStatusListener] Channel subscription status:', status)
-      })
-
-    unsubscribeRef.current = () => {
-      console.log('[OrderStatusListener] Unsubscribing from channel')
-      supabase.removeChannel(channel).then(() => {
-        console.log('[OrderStatusListener] Channel unsubscribed')
-      })
-    }
+        // Prevent duplicate notifications
+        const lastStatus = lastStatusRef.current[newOrder.id]
+        if (lastStatus === newOrder.status) return
+        
+        lastStatusRef.current[newOrder.id] = newOrder.status
+        showNotification(newOrder.status, newOrder.order_number, newOrder.id)
+      }
+    })
 
     return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current()
-      }
+      unsubscribePromise.then(unsub => unsub())
     }
   }, [user?.id])
 

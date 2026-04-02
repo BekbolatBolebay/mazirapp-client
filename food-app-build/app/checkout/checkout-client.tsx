@@ -2,7 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { 
+    getRestaurantSettings, 
+    getWorkingHours, 
+    getUserCards, 
+    getTables, 
+    getCheckoutMenu, 
+    getAllReservations, 
+    createReservation, 
+    createOrder, 
+    subscribeToRestaurantSettings 
+} from '@/lib/pocketbase/checkout'
 import { notifyAdmin } from '@/lib/actions'
 import { useLocalCart } from '@/hooks/use-local-cart'
 import { clearLocalCart } from '@/lib/storage/local-storage'
@@ -148,7 +158,7 @@ export function CheckoutClient() {
         }
     }, [orderType, coords, restaurantSettings])
 
-    // Load saved cards for authenticated users
+    // Load saved cards for authenticated users using PocketBase
     useEffect(() => {
         if (!authUser) {
             setSavedCards([])
@@ -157,19 +167,10 @@ export function CheckoutClient() {
 
         const fetchCards = async () => {
             setFetchingCards(true)
-            const supabase = createClient()
-            const { data, error } = await supabase
-                .from('user_cards')
-                .select('*')
-                .eq('user_id', authUser.id)
-                .is('is_active', true)
-                .order('created_at', { ascending: false })
-
-            if (!error && data) {
-                setSavedCards(data)
-                if (data.length > 0) {
-                    setSelectedCardId(data[0].pg_card_id)
-                }
+            const cards = await getUserCards(authUser.id)
+            setSavedCards(cards)
+            if (cards.length > 0) {
+                setSelectedCardId(cards[0].pg_card_id)
             }
             setFetchingCards(false)
         }
@@ -189,8 +190,6 @@ export function CheckoutClient() {
         const canFreedom = restaurantSettings.accept_freedom ?? false
         const canCash = restaurantSettings.accept_cash ?? true
         
-        console.log('[Checkout] Payment flags calculated (with defaults):', { canKaspi, canFreedom, canCash })
-
         setPaymentMethod(prev => {
             if (prev === 'kaspi' && canKaspi) return 'kaspi'
             if (prev === 'freedom' && canFreedom) return 'freedom'
@@ -206,151 +205,46 @@ export function CheckoutClient() {
 
     const total = subtotal + calculatedFee
 
-    // Fetch restaurant settings and tables
+    // Fetch restaurant settings and tables using PocketBase
     useEffect(() => {
         if (!restaurantId) return
-        const supabase = createClient()
 
-        // Settings
-        const fetchSettings = () => {
-            supabase
-                .from('restaurants')
-                .select(`
-                    id, 
-                    name_kk, 
-                    name_ru, 
-                    name_en, 
-                    description_kk, 
-                    description_ru, 
-                    description_en, 
-                    image_url, 
-                    banner_url, 
-                    address, 
-                    phone, 
-                    rating, 
-                    delivery_time_min, 
-                    delivery_time_max, 
-                    delivery_fee, 
-                    minimum_order, 
-                    is_open, 
-                    status, 
-                    opening_hours, 
-                    cuisine_types, 
-                    kaspi_link, 
-                    freedom_merchant_id, 
-                    accept_cash, 
-                    accept_kaspi, 
-                    accept_freedom, 
-                    is_delivery_enabled, 
-                    is_pickup_enabled, 
-                    is_booking_enabled, 
-                    base_delivery_fee, 
-                    delivery_fee_per_km, 
-                    booking_fee,
-                    latitude, 
-                    longitude
-                `)
-                .eq('id', restaurantId)
-                .single()
-                .then(({ data, error }) => {
-                    console.log('[Checkout] Fetched settings for ID:', restaurantId, data)
-                    if (error) {
-                        console.error('[Checkout] Error fetching restaurant settings:', error)
-                        return
-                    }
+        const fetchData = async () => {
+            // Settings
+            const settings = await getRestaurantSettings(restaurantId)
+            if (settings) {
+                setRestaurantSettings(settings)
+                if (settings.is_delivery_enabled) setOrderType(prev => prev || 'delivery')
+                else if (settings.is_pickup_enabled) setOrderType(prev => prev || 'pickup')
+            }
 
-                    if (data) {
-                        setRestaurantSettings(data)
+            // Working Hours
+            const hours = await getWorkingHours(restaurantId)
+            setWorkingHours(hours)
 
-                        // Set default payment method if none selected correctly
-                        setPaymentMethod(prev => {
-                            if (prev) return prev
-                            const persisted = localStorage.getItem('last_payment_method')
-                            const canKaspi = data.accept_kaspi ?? true
-                            const canFreedom = data.accept_freedom ?? false
-                            const canCash = data.accept_cash ?? true
+            // Tables
+            const tables = await getTables(restaurantId)
+            setAllTables(tables)
 
-                            if (persisted === 'kaspi' && canKaspi) return 'kaspi'
-                            if (persisted === 'freedom' && canFreedom) return 'freedom'
-                            if (persisted === 'cash' && canCash) return 'cash'
+            // Menu
+            const { categories: cats, items } = await getCheckoutMenu(restaurantId)
+            setCategories(cats)
+            setMenuItems(items)
 
-                            if (canKaspi) return 'kaspi'
-                            if (canFreedom) return 'freedom'
-                            if (canCash) return 'cash'
-                            return null
-                        })
-
-                        if (data.is_delivery_enabled) setOrderType(prev => prev || 'delivery')
-                        else if (data.is_pickup_enabled) setOrderType(prev => prev || 'pickup')
-                    }
-                })
+            // Reservations
+            const res = await getAllReservations(restaurantId)
+            setAllReservations(res)
         }
 
-        fetchSettings()
+        fetchData()
 
-        // Working Hours
-        supabase
-            .from('working_hours')
-            .select('*')
-            .eq('cafe_id', restaurantId)
-            .then(({ data }) => {
-                if (data) setWorkingHours(data)
-            })
-
-        // Real-time updates for restaurant settings
-        const channel = supabase
-            .channel(`restaurant-settings-${restaurantId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'restaurants',
-                filter: `id=eq.${restaurantId}`
-            }, fetchSettings)
-            .subscribe()
-
-        // Fetch all tables
-        supabase
-            .from('restaurant_tables')
-            .select('*')
-            .eq('cafe_id', restaurantId)
-            .eq('is_active', true) 
-            .then(({ data }) => {
-                if (data) setAllTables(data)
-            })
-
-        // Fetch categories and items for booking menu
-        supabase
-            .from('categories')
-            .select('*')
-            .eq('cafe_id', restaurantId)
-            .eq('is_active', true)
-            .order('sort_order', { ascending: true })
-            .then(({ data }) => {
-                if (data) setCategories(data)
-            })
-
-        supabase
-            .from('menu_items')
-            .select('*')
-            .eq('cafe_id', restaurantId)
-            .eq('is_available', true)
-            .order('sort_order', { ascending: true })
-            .then(({ data }) => {
-                if (data) setMenuItems(data)
-            })
-
-        // Fetch all current/future reservations to check availability client-side
-        supabase
-            .from('reservations')
-            .select('id, table_id, date, time, duration_hours, status')
-            .eq('cafe_id', restaurantId)
-            .in('status', ['pending', 'confirmed', 'awaiting_payment', 'completed', 'rejected', 'cancelled'])
-            .then(({ data }) => {
-                if (data) setAllReservations(data)
-            })
+        // Real-time updates using PocketBase
+        const unsubscribe = subscribeToRestaurantSettings(restaurantId, (newSettings) => {
+            setRestaurantSettings(newSettings)
+        })
 
         return () => {
-            supabase.removeChannel(channel)
+            unsubscribe()
         }
     }, [restaurantId])
 
@@ -377,11 +271,9 @@ export function CheckoutClient() {
                 const resStart = parseInt(res.time.split(':')[0]) * 60 + parseInt(res.time.split(':')[1])
                 const resEnd = resStart + (res.duration_hours * 60)
 
-                // Buffer of 15 minutes between bookings could be added here if needed
                 return requestedStart < resEnd && requestedEnd > resStart
             })
 
-            // Return true if no overlap, regardless of is_active (since we already filtered by is_active in fetch if we wanted)
             return !hasOverlap
         })
 
@@ -443,11 +335,16 @@ export function CheckoutClient() {
     }
 
     const handleCheckout = async () => {
+        if (!authUser) {
+            toast.error(t.cart.please_signin)
+            router.push('/login?next=/checkout')
+            return
+        }
+
         setCheckoutLoading(true)
-        const supabase = createClient()
 
         try {
-            // Check if restaurant is open if auto_reject_when_closed is true
+            // Check if restaurant is open
             if (restaurantSettings?.auto_reject_when_closed) {
                 const { isOpen, message } = isRestaurantOpen(restaurantSettings.status, workingHours)
                 if (!isOpen) {
@@ -459,21 +356,14 @@ export function CheckoutClient() {
                 }
             }
 
-            if (orderType === 'booking' && !selectedTableId) {
-                toast.error(locale === 'kk' ? 'Үстел таңдаңыз' : 'Выберите столик')
-                setCheckoutLoading(false)
-                return
-            }
-
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) {
-                toast.error(t.cart.please_signin)
-                router.push('/login?next=/checkout')
-                return
-            }
-
             if (orderType === 'booking') {
-                // 1. Double check availability (client-side list is already filtered, but table_id might have been taken)
+                if (!selectedTableId) {
+                    toast.error(locale === 'kk' ? 'Үстел таңдаңыз' : 'Выберите столик')
+                    setCheckoutLoading(false)
+                    return
+                }
+
+                // Double check availability
                 const isStillAvailable = availableTables.some(t => t.id === selectedTableId)
                 if (!isStillAvailable) {
                     toast.error(locale === 'kk' ? 'Кешіріңіз, бұл үстел бос емес' : 'Извините, этот стол уже занят')
@@ -481,88 +371,65 @@ export function CheckoutClient() {
                     return
                 }
 
-                // 2. Insert Reservation
-                const { data: reservation, error: resError } = await supabase
-                    .from('reservations')
-                    .insert({
-                        cafe_id: restaurantId,
-                        customer_name: name,
-                        customer_phone: phone,
-                        date: bookingDate,
-                        time: bookingTime,
-                        guests_count: bookingGuests,
-                        table_id: selectedTableId,
-                        payment_method: paymentMethod || 'cash',
-                        notes: notes,
-                        duration_hours: bookingDuration,
-                        customer_id: user.id,
-                        total_amount: total,
-                        booking_fee: calculatedFee,
-                        status: paymentMethod === 'freedom' ? 'awaiting_payment' : 'pending',
-                        payment_status: 'pending'
-                    })
-                    .select()
-                    .single()
-
-                if (resError) throw resError
-
-                const reservationId = reservation.id
-
-                // 3. Insert Reservation Items if any
-                if (cartItems.length > 0) {
-                    const reservationItems = cartItems.map(item => ({
-                        reservation_id: reservation.id,
-                        menu_item_id: item.menu_item_id,
-                        name_kk: item.menu_item.name_kk,
-                        name_ru: item.menu_item.name_ru,
-                        price: item.menu_item.price,
-                        quantity: item.quantity
-                    }))
-
-                    const { error: itemsError } = await supabase
-                        .from('reservation_items')
-                        .insert(reservationItems)
-
-                    if (itemsError) console.error('[Checkout] Error inserting reservation items:', itemsError)
+                // Insert Reservation using PocketBase
+                const reservationData = {
+                    cafe_id: restaurantId,
+                    customer_name: name,
+                    customer_phone: phone,
+                    date: bookingDate,
+                    time: bookingTime,
+                    guests_count: bookingGuests,
+                    table_id: selectedTableId,
+                    payment_method: paymentMethod || 'cash',
+                    notes: notes,
+                    duration_hours: bookingDuration,
+                    customer_id: authUser.id,
+                    total_amount: total,
+                    booking_fee: calculatedFee,
+                    status: paymentMethod === 'freedom' ? 'awaiting_payment' : 'pending',
+                    payment_status: 'pending'
                 }
 
-                // 4. Notify Admin
+                const reservationItems = cartItems.map(item => ({
+                    menu_item_id: item.menu_item_id,
+                    name_kk: item.menu_item.name_kk,
+                    name_ru: item.menu_item.name_ru,
+                    price: item.menu_item.price,
+                    quantity: item.quantity
+                }))
+
+                const reservation = await createReservation(reservationData, reservationItems)
+
+                // Notify Admin
                 await notifyAdmin(reservation, 'booking', restaurantId || undefined)
 
                 clearLocalCart()
                 toast.success(locale === 'kk' ? 'Брондау сәтті аяқталды' : 'Бронирование успешно завершено')
-                router.push(`/reservations/${reservationId}`)
+                router.push(`/reservations/${reservation.id}`)
                 return
             }
 
-
-            const { data: order, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    user_id: user.id,
-                    cafe_id: restaurantId,
-                    status: paymentMethod === 'freedom' ? 'awaiting_payment' : 'new',
-                    total_amount: orderType === 'delivery' ? total : subtotal,
-                    delivery_fee: orderType === 'delivery' ? calculatedFee : 0,
-                    delivery_address: orderType === 'delivery' ? (address || '') : '',
-                    address: orderType === 'delivery' ? (address || '') : '',
-                    latitude: coords?.lat,
-                    longitude: coords?.lng,
-                    payment_method: paymentMethod,
-                    payment_status: 'pending',
-                    customer_phone: phone || '',
-                    phone: phone || '',
-                    notes: notes || '',
-                    type: orderType,
-                    items_count: cartItems.length
-                })
-                .select()
-                .single()
-
-            if (orderError) throw orderError
+            // Insert Order using PocketBase
+            const orderData = {
+                user_id: authUser.id,
+                cafe_id: restaurantId,
+                status: paymentMethod === 'freedom' ? 'awaiting_payment' : 'new',
+                total_amount: orderType === 'delivery' ? total : subtotal,
+                delivery_fee: orderType === 'delivery' ? calculatedFee : 0,
+                delivery_address: orderType === 'delivery' ? (address || '') : '',
+                address: orderType === 'delivery' ? (address || '') : '',
+                latitude: coords?.lat,
+                longitude: coords?.lng,
+                payment_method: paymentMethod,
+                payment_status: 'pending',
+                customer_phone: phone || '',
+                phone: phone || '',
+                notes: notes || '',
+                type: orderType,
+                items_count: cartItems.length
+            }
 
             const orderItems = cartItems.map((item) => ({
-                order_id: order.id,
                 menu_item_id: item.menu_item_id,
                 name_kk: item.menu_item.name_kk || '',
                 name_ru: item.menu_item.name_ru || '',
@@ -570,11 +437,7 @@ export function CheckoutClient() {
                 price: item.menu_item.price || 0,
             }))
 
-            const { error: itemsError } = await supabase
-                .from('order_items')
-                .insert(orderItems)
-
-            if (itemsError) throw itemsError
+            const order = await createOrder(orderData, orderItems)
 
             // Notify Admin via Push
             await notifyAdmin(order, 'order', restaurantId || undefined)
@@ -587,9 +450,9 @@ export function CheckoutClient() {
                         orderId: order.id,
                         amount: orderType === 'delivery' ? total : subtotal,
                         description: `${t.cart.order_number_label} #${order.order_number || order.id.slice(0, 8)}`,
-                        customerEmail: user.email,
+                        customerEmail: authUser.email,
                         customerPhone: phone,
-                        cardId: paymentMethod === 'freedom' ? selectedCardId : null
+                        cardId: selectedCardId
                     })
                 })
 

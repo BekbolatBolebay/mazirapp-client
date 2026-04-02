@@ -13,32 +13,31 @@ interface Category {
   icon_url?: string
 }
 
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { useEffect, useState } from 'react'
 
-export function CategoryGrid({ initialCategories }: { initialCategories: Category[] }) {
+export function CategoryGrid({ initialCategories }: { initialCategories: any[] }) {
   const { t, locale } = useI18n()
   const [categories, setCategories] = useState(initialCategories)
-  const supabase = createClient()
 
   useEffect(() => {
     // Real-time subscription for category changes
-    const channel = supabase
-      .channel('home-category-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, async () => {
-        const { data } = await supabase
-          .from('categories')
-          .select('*')
-          .eq('home_visible', true)
-          .order('home_sort_order', { ascending: true })
-        if (data) setCategories(data)
-      })
-      .subscribe()
+    pb.collection('categories').subscribe('*', async () => {
+      try {
+        const data = await pb.collection('categories').getFullList({
+          filter: 'home_visible = true',
+          sort: 'home_sort_order'
+        })
+        setCategories(data)
+      } catch (e) {
+        console.error('Real-time Category Update Error:', e)
+      }
+    })
 
     return () => {
-      supabase.removeChannel(channel)
+      pb.collection('categories').unsubscribe('*')
     }
-  }, [supabase])
+  }, [])
 
   return (
     <section className="space-y-4">

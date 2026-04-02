@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User } from '@supabase/supabase-js'
+import pb from '@/utils/pocketbase'
 import {
     LogOut,
     User as UserIcon,
@@ -25,7 +25,6 @@ import {
     CheckCircle2,
     ChevronLeft
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -38,7 +37,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,7 +44,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 interface Props {
-    user: User
+    user: any
     profile: any
     restaurant?: any
 }
@@ -55,7 +53,6 @@ export default function ProfileClient({ user, profile, restaurant }: Props) {
     const router = useRouter()
     const { t, locale, setLocale } = useI18n()
     const { subscribeToPush, updateProfile } = useAuth()
-    const supabase = createClient()
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [editName, setEditName] = useState('')
@@ -71,42 +68,39 @@ export default function ProfileClient({ user, profile, restaurant }: Props) {
         if (!user || user.is_anonymous) return
 
         const fetchStats = async () => {
-            // Fetch total orders
-            const { count: oCount } = await supabase
-                .from('orders')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id)
-            
-            setOrderCount(oCount || 0)
+            try {
+                // Fetch total orders
+                const orders = await pb.collection('orders').getList(1, 1, {
+                    filter: `user_id = "${user.id}"`,
+                })
+                setOrderCount(orders.totalItems)
 
-            // Fetch total favorites
-            const { count: fCount } = await supabase
-                .from('favorites')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id)
-            
-            setFavoritesCount(fCount || 0)
+                // Fetch total favorites
+                const favorites = await pb.collection('favorites').getList(1, 1, {
+                    filter: `user_id = "${user.id}"`,
+                })
+                setFavoritesCount(favorites.totalItems)
 
-            // Fetch latest active order
-            const { data: latestOrder } = await supabase
-                .from('orders')
-                .select('id, order_number, status, total_amount, created_at')
-                .eq('user_id', user.id)
-                .in('status', ['pending', 'preparing', 'ready', 'delivering', 'on_the_way'])
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .single()
+                // Fetch latest active order
+                const activeOrders = await pb.collection('orders').getFullList({
+                    filter: `user_id = "${user.id}" && (status = "pending" || status = "preparing" || status = "ready" || status = "delivering" || status = "on_the_way")`,
+                    sort: '-created',
+                    requestKey: null
+                })
 
-            if (latestOrder) {
-                setActiveOrder(latestOrder)
+                if (activeOrders.length > 0) {
+                    setActiveOrder(activeOrders[0])
+                }
+            } catch (err) {
+                console.error('Error fetching profile stats:', err)
             }
         }
 
         fetchStats()
-    }, [user, supabase])
+    }, [user])
 
     const handleSignOut = async () => {
-        await supabase.auth.signOut()
+        pb.authStore.clear()
         router.push('/')
         router.refresh()
     }

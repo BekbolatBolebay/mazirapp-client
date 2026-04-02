@@ -2,7 +2,7 @@ import { Header } from '@/components/layout/header'
 import { SearchBar } from '@/components/home/search-bar'
 import Link from 'next/link'
 import { LayoutGrid, ChevronRight } from 'lucide-react'
-import { getGlobalCategories } from '@/lib/supabase/categories'
+import { getGlobalCategories } from '@/lib/pocketbase/categories'
 
 export default async function CategoriesPage() {
     const categories = await getGlobalCategories()

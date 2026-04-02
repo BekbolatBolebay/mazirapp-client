@@ -12,7 +12,7 @@ import { Minus, Plus, Trash2, CalendarCheck, Utensils, Store, ShoppingCart } fro
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-
+import pb from '@/utils/pocketbase'
 import { useI18n } from '@/lib/i18n/i18n-context'
 
 type Tab = 'food' | 'cafe'
@@ -126,20 +126,17 @@ export default function CartPage() {
 
     // Fetch restaurant details if cart has items
     if (cartItems.length > 0) {
-      import('@/lib/supabase/client').then(({ createClient }) => {
-        const supabase = createClient()
-        supabase
-          .from('restaurants')
-          .select('delivery_fee, name_kk, name_ru')
-          .eq('id', cartItems[0].cafe_id)
-          .single()
-          .then(({ data }) => {
-            if (data) {
-              setDeliveryFee(data.delivery_fee)
-              setRestaurant(data)
-            }
-          })
-      })
+      pb.collection('restaurants')
+        .getOne(cartItems[0].cafe_id, {
+          fields: 'delivery_fee, name_kk, name_ru'
+        })
+        .then((data) => {
+          if (data) {
+            setDeliveryFee(data.delivery_fee)
+            setRestaurant(data)
+          }
+        })
+        .catch(err => console.error('Error fetching restaurant details for cart:', err))
     }
 
     return () => window.removeEventListener('bookingCartUpdated', update)

@@ -5,16 +5,13 @@ import Image from 'next/image'
 import { Star, Clock } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useRouter } from 'next/navigation'
-import { Database } from '@/lib/supabase/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 import { FavoriteButton } from '@/components/restaurant/favorite-button'
 
-type Restaurant = Database['public']['Tables']['restaurants']['Row']
-
-export function RestaurantSection({ restaurants }: { restaurants: Restaurant[] }) {
+export function RestaurantSection({ restaurants }: { restaurants: any[] }) {
   const { t, locale } = useI18n()
   const router = useRouter()
 

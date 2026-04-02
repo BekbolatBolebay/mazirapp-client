@@ -6,16 +6,11 @@ import { Star, Plus } from 'lucide-react'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useRouter } from 'next/navigation'
 import { addToLocalCart, LocalCartItem } from '@/lib/storage/local-storage'
-import { Database } from '@/lib/supabase/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { FavoriteButton } from '@/components/restaurant/favorite-button'
 
-type MenuItem = Database['public']['Tables']['menu_items']['Row'] & {
-  restaurants: Database['public']['Tables']['restaurants']['Row'] | null
-}
-
-export function FoodSection({ title, items }: { title: string; items: MenuItem[] }) {
+export function FoodSection({ title, items }: { title: string; items: any[] }) {
   const { t, locale } = useI18n()
   const router = useRouter()
 

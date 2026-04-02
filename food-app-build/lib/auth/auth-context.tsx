@@ -1,11 +1,7 @@
-'use client'
-
 import { createContext, useContext, useEffect, useState } from 'react'
-import { User } from '@supabase/supabase-js'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Database } from '@/lib/supabase/types'
-import { getFcmToken } from '@/lib/firebase'
+import { useRouter } from 'next/navigation'
+import pb from '@/utils/pocketbase'
+import { sendCustomOtp, verifyCustomOtp as verifyOtpAction, signOut as signOutAction } from './auth-actions'
 
 type Profile = {
   id: string
@@ -18,18 +14,16 @@ type Profile = {
 }
 
 type AuthContextType = {
-  user: User | null
+  user: any | null
   profile: Profile | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, fullName: string) => Promise<void>
-  signInWithEmail: (email: string) => Promise<void>
   signInWithCustomOtp: (email: string, fullName: string, phone: string) => Promise<void>
   verifyCustomOtp: (email: string, code: string) => Promise<void>
-  verifyEmailOtp: (email: string, token: string) => Promise<void>
   signInAnonymous: () => Promise<void>
-  updateProfile: (data: { fullName: string, phone: string }) => Promise<void>
   signOut: () => Promise<void>
+  updateProfile: (data: { fullName?: string; phone?: string; avatar?: File }) => Promise<void>
   subscribeToPush: () => Promise<void>
 }
 
@@ -37,301 +31,135 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<any | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
-
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
+    // Initial sync
+    const syncAuth = async () => {
+      try {
+        // First try the new system (JWT cookie)
+        // We'll rely on server-side initial data if possible, 
+        // but for client-side we can check the cookie via an API or just check if pb is still used.
+        // The user mentioned migration to SQL/JWT.
+        
+        if (pb.authStore.isValid) {
+          const model = pb.authStore.model
+          setUser(model)
+          setProfile({
+            id: model?.id || '',
+            full_name: model?.name || model?.full_name || '',
+            avatar_url: model?.avatar ? pb.files.getUrl(model, model.avatar) : null,
+            phone: model?.phone || '',
+            is_anonymous: model?.is_anonymous || false,
+            role: model?.role || 'user',
+            updated_at: model?.updated || null,
+          })
+        } else {
+          // Check for JWT token via an API call or similar mechanism if needed
+          // For now, if PB is invalid, we assume not logged in or using JWT only on server side.
+          setUser(null)
+          setProfile(null)
+        }
+      } catch (err) {
+        console.error('Sync auth error:', err)
+      } finally {
         setLoading(false)
       }
+    }
+
+    syncAuth()
+
+    // Listen for auth changes (PB)
+    const unsubscribe = pb.authStore.onChange(() => {
+      syncAuth()
     })
 
-    // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
-        setProfile(null)
-        setLoading(false)
-      }
-    })
-
-    return () => subscription.unsubscribe()
+    return () => unsubscribe()
   }, [])
 
-  const fetchProfile = async (userId: string) => {
-    const supabase = createClient()
-
-    // Try clients table first (for app users)
-    const { data: clientData, error } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('id', userId)
-      .single()
-
-    if (!error && clientData) {
-      const mergedProfile: Profile = {
-        id: clientData.id,
-        full_name: clientData.full_name || '',
-        avatar_url: clientData.avatar_url,
-        phone: clientData.phone || '',
-        is_anonymous: clientData.is_anonymous || false,
-        role: 'user',
-        updated_at: clientData.updated_at
-      }
-      setProfile(mergedProfile)
-      setLoading(false)
-      return
-    }
-
-    // Fallback anyway to staff_profiles table if not found in clients (experimental or admin in app)
-    const { data: userData, error: userError } = await supabase
-      .from('staff_profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-
-    if (userError || !userData) {
-      // Don't log error for anonymous users as they might not have a profile yet
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user?.is_anonymous) {
-        console.error('Error fetching profile from both tables:', userError)
-      }
-      setProfile(null)
-      setLoading(false)
-      return
-    }
-
-    const mergedProfile: Profile = {
-      id: userData.id,
-      full_name: userData.full_name || '',
-      avatar_url: userData.avatar_url,
-      phone: userData.phone || '',
-      is_anonymous: (userData as any).is_anonymous || false,
-      role: (userData.role as any) || 'user',
-      updated_at: userData.updated_at
-    }
-
-    setProfile(mergedProfile)
-    setLoading(false)
-  }
-
   const signIn = async (email: string, password: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+    await pb.collection('users').authWithPassword(email, password)
   }
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
+    await pb.collection('users').create({
       email,
       password,
-      options: {
-        data: { full_name: fullName }
-      }
+      passwordConfirm: password,
+      name: fullName,
     })
-    if (error) throw error
-  }
-
-  const signInWithEmail = async (email: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true
-      }
-    })
-    if (error) throw error
-  }
-
-  const verifyEmailOtp = async (email: string, token: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email'
-    })
-    if (error) throw error
-    router.refresh()
+    await signIn(email, password)
   }
 
   const signInWithCustomOtp = async (email: string, fullName: string, phone: string) => {
-    const { sendCustomOtp } = await import('./auth-actions')
     await sendCustomOtp(email, fullName, phone)
   }
 
   const verifyCustomOtp = async (email: string, code: string) => {
-    const { verifyCustomOtp: verifyAction } = await import('./auth-actions')
-    const { token_hash } = await verifyAction(email, code)
-
-    const supabase = createClient()
-    const { error } = await supabase.auth.verifyOtp({
-      token_hash,
-      type: 'email'
-    })
-
-    if (error) throw error
-    router.refresh()
+    const result = await verifyOtpAction(email, code)
+    if (result.success && result.user) {
+        setUser(result.user)
+        setProfile({
+            id: result.user.id,
+            full_name: result.user.full_name,
+            avatar_url: result.user.avatar_url,
+            phone: result.user.phone,
+            is_anonymous: false,
+            role: result.user.role,
+            updated_at: result.user.updated_at,
+        })
+    }
   }
 
   const signInAnonymous = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase.auth.signInAnonymously()
-    if (error) {
-      console.error('Anonymous sign in error:', error)
-      throw error
-    }
-    // For anonymous users, we might want to ensure a profile exists
-    if (data.user) {
-      await fetchProfile(data.user.id)
-    }
-  }
-
-  const updateProfile = async (data: { fullName: string, phone: string }) => {
-    const response = await fetch('/api/profile', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        full_name: data.fullName,
-        phone: data.phone
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Қате орын алды')
-    }
-
-    if (user) {
-      await fetchProfile(user.id)
-    }
-  }
-
-  const subscribeToPush = async () => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.warn('Push messaging is not supported')
-      return
-    }
-
-    try {
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') {
-        const { toast } = await import('sonner')
-        toast.error(
-          window.location.hostname === 'localhost'
-            ? 'Notification permission denied'
-            : 'Хабарламаға рұқсат берілмеді'
-        )
-        return
-      }
-
-      // 1. Get FCM Token first (it handles its own SW registration if needed)
-      console.log('[AuthContext] Fetching FCM Token...')
-      const fcmToken = await getFcmToken()
-
-      // 2. Ensure we have a registration for standard Web Push
-      let registrations = await navigator.serviceWorker.getRegistrations()
-      let registration = registrations.find(r => r.active?.scriptURL.includes('sw.js') || r.active?.scriptURL.includes('firebase-messaging-sw.js'))
-
-      if (!registration) {
-        console.log('[AuthContext] No active service worker, registering firebase-messaging-sw.js as primary push handler...')
-        try {
-          // Try standard PWA worker first if exists
-          registration = await navigator.serviceWorker.register('/sw.js').catch(() => {
-             console.log('[AuthContext] sw.js not found, trying firebase-messaging-sw.js');
-             return navigator.serviceWorker.register('/firebase-messaging-sw.js');
-          });
-        } catch (regError) {
-          console.error('[AuthContext] All SW registrations failed:', regError)
-          throw new Error('Service Worker тіркеу мүмкін болмады (Registration failed)')
-        }
-      }
-
-      // Wait for registration to be ready
-      if (registration && !registration.active) {
-          await new Promise<void>((resolve) => {
-              const checkActive = () => {
-                  if (registration?.active) resolve();
-                  else setTimeout(checkActive, 100);
-              };
-              checkActive();
-          });
-      }
-
-      // 3. Get or Create Standard Web Push Subscription
-      let subscription = await registration.pushManager.getSubscription()
-
-      if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-        })
-      }
-
-      // 4. Store everything in DB
-      if (user) {
-        const supabase = createClient()
-        const subscriptionString = JSON.stringify(subscription)
-
-        // Update clients table
-        const { data: clientsData, error: clientError } = await supabase
-            .from('clients')
-            .update({ 
-                push_token: subscriptionString,
-                push_subscription: subscription as any,
-                fcm_token: fcmToken,
-                preferred_language: (profile as any)?.language || 'ru',
-                language: (profile as any)?.language || 'ru'
-            })
-            .eq('id', user.id)
-            .select()
-
-        if (clientError || !clientsData || clientsData.length === 0) {
-            // Fallback to staff_profiles if not a client (e.g. admin/staff)
-            await supabase
-                .from('staff_profiles')
-                .update({ 
-                    push_subscription: subscription as any,
-                    push_token: subscriptionString,
-                    fcm_token: fcmToken
-                } as any)
-                .eq('id', user.id)
-        }
-      }
-
-      const { toast } = await import('sonner')
-      toast.success(
-        window.location.hostname === 'localhost'
-          ? 'Subscribed to notifications'
-          : 'Хабарламалар қосылды'
-      )
-    } catch (error: any) {
-      console.error('Error subscribing to push:', error)
-      const { toast } = await import('sonner')
-      toast.error(error.message || 'Error subscribing')
-    }
+    // Guest logic can stay as is or be migrated to SQL
+    throw new Error('Anonymous sign-in not yet implemented for SQL system')
   }
 
   const signOut = async () => {
-    const supabase = createClient()
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    await signOutAction()
+    pb.authStore.clear()
+    setUser(null)
+    setProfile(null)
+    router.push('/')
+  }
+
+  const updateProfile = async (data: { fullName?: string; phone?: string; avatar?: File }) => {
+    if (!user) return
+    
+    const formData = new FormData()
+    if (data.fullName) formData.append('name', data.fullName)
+    if (data.phone) formData.append('phone', data.phone)
+    if (data.avatar) formData.append('avatar', data.avatar)
+    
+    await pb.collection('users').update(user.id, formData)
+  }
+
+  const subscribeToPush = async () => {
+    try {
+      const { getFcmToken } = await import('@/lib/firebase')
+      const token = await getFcmToken()
+      if (token && user) {
+        // Update both if possible, or just the one being used
+        if (user.id.length > 20) { // Likely UUID from SQL
+             // We need an API for this
+        } else {
+            await pb.collection('users').update(user.id, {
+                fcm_token: token,
+                updated_at: new Date().toISOString()
+            })
+        }
+      }
+    } catch (error) {
+      console.error('Error subscribing to push:', error)
+    }
   }
 
   return (
     <AuthContext.Provider value={{
-      user, profile, loading, signIn, signUp,
-      signInWithEmail, signInWithCustomOtp, verifyCustomOtp, verifyEmailOtp, signInAnonymous, updateProfile, subscribeToPush, signOut
+      user, profile, loading, signIn, signUp, signInWithCustomOtp, verifyCustomOtp, signInAnonymous, signOut, updateProfile, subscribeToPush
     }}>
       {children}
     </AuthContext.Provider>

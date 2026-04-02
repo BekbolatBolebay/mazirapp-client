@@ -7,50 +7,49 @@ import { CategoryGrid } from '@/components/home/category-grid'
 import { RestaurantSection } from '@/components/home/restaurant-section'
 import { FoodSection } from '@/components/home/food-section'
 import { FeaturedSlider } from '@/components/home/featured-slider'
-import { createClient } from '@/lib/supabase/server'
+import pb from '@/utils/pocketbase'
 import { getGlobalCategories } from '@/lib/supabase/categories'
 import { MapPin, ChevronDown, Sparkles } from 'lucide-react'
 import { HomeClient } from './home-client'
 
 export default async function HomePage() {
-  const supabase = await createClient()
-
   // Get user for personal greeting
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = pb.authStore.model
   let profile = null
   if (user) {
-    const { data } = await supabase.from('clients').select('full_name').eq('id', user.id).single()
-    profile = data
+      profile = { full_name: user.full_name || user.name }
   }
 
   const [
-    { data: promotions },
-    { data: restaurants },
-    { data: popularItems },
+    promotions,
+    restaurants,
+    popularItems,
     categories
   ] = await Promise.all([
-    supabase
-      .from('promotions')
-      .select('*')
-      .eq('is_active', true)
-      .gte('end_date', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(3),
-    supabase
-      .from('restaurants')
-      .select('*')
-      .eq('is_open', true)
-      .order('rating', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(50),
-    supabase
-      .from('menu_items')
-      .select('*, restaurants(*)')
-      .eq('is_available', true)
-      .order('created_at', { ascending: false })
-      .limit(10),
+    pb.collection('promotions').getFullList({
+      filter: `is_active = true && end_date >= "${new Date().toISOString()}"`,
+      sort: '-created_at',
+      requestKey: null
+    }),
+    pb.collection('restaurants').getFullList({
+      filter: 'is_open = true',
+      sort: 'rating, -created_at',
+      requestKey: null
+    }),
+    pb.collection('menu_items').getFullList({
+      filter: 'is_available = true',
+      sort: '-created_at',
+      expand: 'cafe_id',
+      requestKey: null
+    }),
     getGlobalCategories()
   ])
+
+  // Map popular items to include restaurant data from expand
+  const mappedPopularItems = popularItems.map(item => ({
+      ...item,
+      restaurants: item.expand?.cafe_id || null
+  }))
 
   // Top featured for slider
   const featuredRestaurants = restaurants?.filter(r => r.rating >= 4.5).slice(0, 5) || []
@@ -84,7 +83,7 @@ export default async function HomePage() {
             categories={categories}
             featuredRestaurants={featuredRestaurants}
             restaurants={restaurants}
-            popularItems={popularItems}
+            popularItems={mappedPopularItems}
           />
         </div>
       </main>

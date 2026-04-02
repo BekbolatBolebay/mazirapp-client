@@ -1,14 +1,12 @@
-# Admin API Documentation
-
-All admin API endpoints require authentication with an admin role user. Include the Supabase session token in the Authorization header.
+All admin API endpoints require authentication with an admin role user. Include the PocketBase auth token in the Authorization header.
 
 ## Authentication
 
 ```
-Authorization: Bearer <supabase_access_token>
+Authorization: <pocketbase_auth_token>
 ```
 
-Users must have `role: 'admin'` in the `users` table.
+Users must have `role: 'admin'` or `role: 'super_admin'` in the `staff_profiles` collection.
 
 ---
 
@@ -369,4 +367,4 @@ All endpoints return standard error format:
 2. All timestamps are in ISO 8601 format
 3. UUIDs are used for all IDs
 4. Bilingual content requires both `_en` and `_ru` fields
-5. Real-time updates are sent via Supabase Realtime when orders are updated
+5. Real-time updates are sent via PocketBase collection subscriptions when orders are updated

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowLeft, Phone, MapPin, Clock, CheckCircle2, XCircle, MessageCircle, CreditCard, PartyPopper, Bike, AlertTriangle, Lock, Loader2, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
-import { createClient } from '@/lib/supabase/client'
+import pb from '@/utils/pocketbase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -41,85 +41,78 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
 
   const handleCancelOrder = async () => {
     setIsCancelling(true)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: 'cancelled' })
-      .eq('id', id)
-
-    if (error) {
-      toast.error(locale === 'ru' ? 'Ошибка при отмене' : 'Бас тарту кезінде қате шықты')
-    } else {
+    try {
+      await pb.collection('orders').update(id, { status: 'cancelled' })
       toast.success(locale === 'ru' ? 'Заказ отменен' : 'Тапсырыс тоқтатылды')
       setOrder((prev: any) => ({ ...prev, status: 'cancelled' }))
+    } catch (error) {
+      toast.error(locale === 'ru' ? 'Ошибка при отмене' : 'Бас тарту кезінде қате шықты')
+    } finally {
+      setIsCancelling(false)
+      setShowConfirmCancel(false)
     }
-    setIsCancelling(false)
-    setShowConfirmCancel(false)
   }
 
   useEffect(() => {
     const fetchData = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      const savedPhone = localStorage.getItem('customer_phone')
+      try {
+        const user = pb.authStore.model
+        const savedPhone = localStorage.getItem('customer_phone')
 
+        // Fetch order with expanded restaurant
+        const orderData = await pb.collection('orders').getOne(id, {
+          expand: 'cafe_id'
+        })
 
-      let { data: orderData, error: fetchError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          restaurants!cafe_id (*),
-          order_items (
-            *,
-            menu_items (*)
-          )
-        `)
-        .eq('id', id)
-        .single()
-
-      if (fetchError || !orderData) {
-        console.error('Order fetch error:', fetchError?.message || fetchError, fetchError?.details)
-        // Check if phone matches as a backup if we have it
-        if (savedPhone) {
-          console.log('Attempting phone-based fallback...')
-        }
-
-        // If we still can't find it, redirect
         if (!orderData) {
           router.push('/orders')
           return
         }
+
+        // Map PocketBase expand to expected structure
+        const mappedOrder = {
+          ...orderData,
+          restaurants: orderData.expand?.cafe_id,
+          order_items: [] as any[]
+        }
+
+        // Fetch order items with expanded menu items
+        const items = await pb.collection('order_items').getFullList({
+          filter: `order_id = "${id}"`,
+          expand: 'menu_item_id'
+        })
+
+        mappedOrder.order_items = items.map(item => ({
+          ...item,
+          menu_items: item.expand?.menu_item_id
+        }))
+
+        // Fetch review if exists
+        const reviewData = await pb.collection('reviews')
+          .getFirstListItem(`order_id = "${id}"`)
+          .catch(() => null)
+
+        setOrder(mappedOrder)
+        setExistingReview(reviewData)
+        setLoading(false)
+      } catch (err) {
+        console.error('Order fetch error:', err)
+        router.push('/orders')
       }
-
-      const { data: reviewData } = await supabase
-        .from('reviews')
-        .select('*')
-        .eq('order_id', id)
-        .maybeSingle()
-
-      setOrder(orderData)
-      setExistingReview(reviewData)
-      setLoading(false)
     }
 
     fetchData()
 
-    // Real-time listener for this specific order
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`order-details-${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` },
-        (payload) => {
-          console.log('Order update detected in parent:', payload.new.status)
-          setOrder((prev: any) => ({ ...prev, ...payload.new }))
-        }
-      )
-      .subscribe()
+    // Real-time listener for this specific order using PocketBase
+    const unsubscribePromise = pb.collection('orders').subscribe(id, (e) => {
+      if (e.action === 'update') {
+        console.log('Order update detected:', e.record.status)
+        setOrder((prev: any) => ({ ...prev, ...e.record }))
+      }
+    })
 
     return () => {
-      supabase.removeChannel(channel)
+      unsubscribePromise.then(unsub => unsub())
     }
   }, [id, router])
 

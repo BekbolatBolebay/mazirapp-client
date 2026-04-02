@@ -1,25 +1,41 @@
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { verify } from 'jsonwebtoken'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'mazir_super_secret_jwt_key_2026'
 
 export async function verifyAdmin() {
-  const supabase = await createClient()
+  const cookieStore = await cookies()
+  const token = cookieStore.get('mazir_auth_token')?.value
   
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
+  if (!token) {
     return { authorized: false, user: null }
   }
 
-  // Check if user has admin role
-  const { data: profile } = await supabase
-    .from('staff_profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+  try {
+    const decoded = verify(token, JWT_SECRET) as any
+    
+    if (!decoded || !decoded.userId) {
+      return { authorized: false, user: null }
+    }
 
-  const isAdmin = profile?.role === 'admin'
-  
-  return { authorized: isAdmin, user }
+    // Verify user role in DB
+    const res = await query(
+      "SELECT id, email, full_name, role FROM users WHERE id = $1 AND role IN ('admin', 'super_admin')",
+      [decoded.userId]
+    )
+    
+    const user = res.rows[0]
+    if (!user) {
+      return { authorized: false, user: null }
+    }
+    
+    return { authorized: true, user }
+  } catch (error) {
+    console.error('[verifyAdmin] Token verification failed:', error)
+    return { authorized: false, user: null }
+  }
 }
 
 export async function withAdminAuth(

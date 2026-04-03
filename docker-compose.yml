@@ -6,48 +6,100 @@ services:
   client:
     build:
       context: .
-      dockerfile: Dockerfile.next
+      dockerfile: Dockerfile
       args:
         - APP_DIR=food-app-build
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
     environment:
-      - NEXT_PUBLIC_POCKETBASE_URL=${POCKETBASE_URL}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=postgres
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=mazir-assets
+      - MINIO_PUBLIC_URL=${CLIENT_URL}/storage
     restart: always
     networks:
       - internal
     depends_on:
-      - pocketbase
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
 
   admin-app:
     build:
       context: .
-      dockerfile: Dockerfile.next
+      dockerfile: Dockerfile
       args:
         - APP_DIR=admin
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
     environment:
-      - NEXT_PUBLIC_POCKETBASE_URL=${POCKETBASE_URL}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=postgres
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=mazir-assets
+      - MINIO_PUBLIC_URL=${CLIENT_URL}/storage
     restart: always
     networks:
       - internal
     depends_on:
-      - pocketbase
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
 
-  # --- PocketBase Backend ---
-  pocketbase:
-    image: muchobien/pocketbase:latest
+  # --- PostgreSQL Backend ---
+  postgres:
+    image: postgres:16-alpine
     restart: always
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
-      - "8090:8090"
+      - "5432:5432"
     volumes:
-      - ./volumes/pocketbase/data:/pb_data
-      - ./volumes/pocketbase/public:/pb_public
+      - ./volumes/postgres/data:/var/lib/postgresql/data
+      - ./supabase/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/api/health"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+    networks:
+      - internal
+
+  # --- MinIO Object Storage ---
+  minio:
+    image: minio/minio
+    restart: always
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./volumes/minio/data:/data
+    command: server /data --console-address ":9001"
     networks:
       - internal
 
 networks:
   internal:
     driver: bridge
+
+

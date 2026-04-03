@@ -5,10 +5,9 @@ services:
   # --- Next.js Applications ---
   client:
     build:
-      context: .
+      context: ./food-app-build
       dockerfile: Dockerfile
       args:
-        - APP_DIR=food-app-build
         - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
         - NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
     environment:
@@ -35,10 +34,9 @@ services:
 
   admin-app:
     build:
-      context: .
+      context: ./admin
       dockerfile: Dockerfile
       args:
-        - APP_DIR=admin
         - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
         - NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
     environment:

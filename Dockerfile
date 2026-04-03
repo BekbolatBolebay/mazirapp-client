@@ -1,6 +1,5 @@
 # Multi-stage Dockerfile for Next.js Standalone
 FROM node:20-alpine AS base
-
 # 1. Тәуелділіктерді (dependencies) орнату кезеңі
 FROM base AS deps
 # Next.js үшін қажетті libc6-compat кітапханасын орнату

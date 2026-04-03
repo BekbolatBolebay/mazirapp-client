@@ -1,3 +1,6 @@
+"use client";
+
+
 import { useEffect } from 'react'
 import { getFcmToken, onMessageListener } from '@/lib/firebase'
 import pb from '@/utils/pocketbase'

@@ -10,7 +10,7 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # Пакет файлдарын көшіру
-ARG APP_DIR=food-app-build
+ARG APP_DIR=admin
 COPY ${APP_DIR}/package.json ${APP_DIR}/package-lock.json* ./
 
 # Ескерту: Егер npm ci қате бере берсе, оны "npm install" деп өзгертіңіз
@@ -19,7 +19,7 @@ RUN npm install || npm ci
 # 2. Жобаны жинау (build) кезеңі
 FROM base AS builder
 WORKDIR /app
-ARG APP_DIR=food-app-build
+ARG APP_DIR=admin
 
 # Бұл кезеңде де pnpm қолжетімді болуы керек
 RUN npm install -g pnpm

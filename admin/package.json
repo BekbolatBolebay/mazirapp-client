@@ -69,7 +69,9 @@
     "tailwind-merge": "^3.3.1",
     "vaul": "^1.1.2",
     "web-push": "^3.6.7",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.45.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.0",

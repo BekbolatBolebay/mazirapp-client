@@ -16,7 +16,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  swcMinify: false,
   // This silences the "Turbopack with Webpack config" error in Next.js 15/16
   turbopack: {},
   output: 'standalone',

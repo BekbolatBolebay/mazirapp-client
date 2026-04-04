@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { validateFreedomSignature } from '@/utils/payment-helpers'
 
 export async function POST(req: Request) {
@@ -15,29 +14,30 @@ export async function POST(req: Request) {
             return new Response('Missing pg_order_id', { status: 400 })
         }
 
-        const supabase = await createClient()
+        // 1. Get restaurant secret key using local Postgres
+        const { query } = await import('@/lib/db/index')
+        const orderRes = await query(
+            `SELECT o.*, r.freedom_payment_secret_key 
+             FROM orders o
+             JOIN restaurants r ON o.cafe_id = r.id
+             WHERE o.id = $1`,
+            [orderId]
+        )
 
-        // 1. Get restaurant secret key to validate signature
-        const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('*, restaurants(*)')
-            .eq('id', orderId)
-            .single()
+        const order = orderRes.rows[0]
 
-        if (orderError || !order || !order.restaurants.freedom_payment_secret_key) {
+        if (!order || !order.freedom_payment_secret_key) {
             return new Response('Order or Secret Key not found', { status: 404 })
         }
 
-        const secretKey = order.restaurants.freedom_payment_secret_key
+        const secretKey = order.freedom_payment_secret_key
 
         // 2. Validate signature (Freedom Pay sends 'result' as script name for result_url)
-        // Note: Verify the script name with Freedom Pay docs, usually it's empty string or specific for the result endpoint
         const isValid = validateFreedomSignature('result', params, secretKey)
 
         if (!isValid) {
             console.error('Invalid Freedom Pay Signature:', params)
             // return new Response('Invalid Signature', { status: 400 }); 
-            // Sometimes it's better to accept but log if sig logic is tricky
         }
 
         // 3. Update order status based on pg_result
@@ -45,14 +45,12 @@ export async function POST(req: Request) {
 
         if (pgResult === 1) {
             // Success
-            await supabase
-                .from('orders')
-                .update({
-                    payment_status: 'paid',
-                    status: 'accepted', // Automatically accept if paid? 
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', orderId)
+            await query(
+                `UPDATE orders 
+                 SET payment_status = $1, status = $2, updated_at = NOW() 
+                 WHERE id = $3`,
+                ['paid', 'accepted', orderId]
+            )
 
             console.log(`Order ${orderId} marked as PAID via Freedom Pay`)
         } else {

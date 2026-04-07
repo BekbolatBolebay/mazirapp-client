@@ -11,14 +11,19 @@ if ! [ -x "$(command -v docker)" ]; then
   exit 1
 fi
 
-# 2. Heuristic Detection of Docker Compose
+# 2. Robust Detection of Docker Compose
+DOCKER_COMPOSE=""
 if docker compose version >/dev/null 2>&1; then
   DOCKER_COMPOSE="docker compose"
 elif command -v docker-compose >/dev/null 2>&1; then
   DOCKER_COMPOSE="docker-compose"
 else
-  # Fallback: Just try "docker compose" even if detection fails
-  DOCKER_COMPOSE="docker compose"
+  echo "❌ Error: Docker Compose is not installed."
+  echo "💡 Please install it using one of these commands:"
+  echo "   sudo apt-get install docker-compose-v2  # (Modern plugin)"
+  echo "   OR"
+  echo "   sudo apt-get install docker-compose     # (Legacy binary)"
+  exit 1
 fi
 
 echo "✅ Using $DOCKER_COMPOSE"

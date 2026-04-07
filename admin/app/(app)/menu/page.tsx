@@ -1,12 +1,15 @@
-import { getMenuItems, getMenuCategories, getCurrentRestaurantId } from '@/lib/db'
+export const dynamic = "force-dynamic"
+import { getMenuItems, getMenuCategories } from '@/lib/db'
+import { getAdminSession } from '@/lib/auth-utils'
+import { redirect } from 'next/navigation'
 import { DEFAULT_CATEGORIES } from '@/lib/constants'
 import { seedDefaultCategories } from '@/lib/actions'
 import MenuClient from './menu-client'
-import type { Category } from '@/lib/db'
 
 export default async function MenuPage() {
-  const restaurantId = await getCurrentRestaurantId()
-  if (!restaurantId) return null
+  const session = await getAdminSession()
+  if (!session?.restaurant_id) redirect('/login')
+  const restaurantId = session.restaurant_id
 
   const [items, dbCategories] = await Promise.all([
     getMenuItems(restaurantId), 
@@ -14,10 +17,10 @@ export default async function MenuPage() {
   ])
 
   // DB-де категориялар жоқ болса, автоматты тұқым ету + fallback
-  let categories: Category[] = dbCategories
+  let categories: any[] = dbCategories
   if (dbCategories.length === 0) {
     // Автоматты тұқым ету (SQL скрипті іске қосылмаған болса)
-    await seedDefaultCategories(false, restaurantId)
+    await seedDefaultCategories(restaurantId)
     const seeded = await getMenuCategories(restaurantId)
     // DB-дан алынған болса оларды қолдан, болмаса DEFAULT_CATEGORIES-ті форма үшін қолдан
     categories = seeded.length > 0 ? seeded : DEFAULT_CATEGORIES.map((c, i) => ({

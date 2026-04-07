@@ -1,26 +1,21 @@
 "use client";
 
-
 import { useEffect } from 'react'
 import { getFcmToken, onMessageListener } from '@/lib/firebase'
-import pb from '@/utils/pocketbase'
 import { toast } from 'sonner'
 
 export function FCMHandler() {
     useEffect(() => {
         const setupFCM = async () => {
             try {
-                const user = pb.authStore.model
-                
-                if (!user) return
-
                 const token = await getFcmToken()
                 
                 if (token) {
-                    // Update token in users collection (was staff_profiles in Supabase)
-                    await pb.collection('users').update(user.id, { 
-                        fcm_token: token,
-                        updated_at: new Date().toISOString()
+                    // Update token in our SQL database via API
+                    await fetch('/api/admin/profile/fcm', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fcm_token: token })
                     })
                 }
 

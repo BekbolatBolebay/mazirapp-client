@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import { verifyAdmin, createAdminResponse, createAdminError } from '@/lib/auth/admin'
 
-// GET all users
+// GET all users (staff_profiles)
 export async function GET(req: NextRequest) {
   const { authorized } = await verifyAdmin()
   if (!authorized) {
@@ -12,23 +12,15 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const role = searchParams.get('role')
 
-  const supabase = await createClient()
-  let query = supabase
-    .from('staff_profiles')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  if (role) {
-    query = query.eq('role', role)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
+  try {
+    const res = await query(
+      'SELECT * FROM public.staff_profiles WHERE ($1::text IS NULL OR role = $1) ORDER BY created_at DESC',
+      [role || null]
+    )
+    return createAdminResponse({ users: res.rows })
+  } catch (error: any) {
     return createAdminError(error.message, 500)
   }
-
-  return createAdminResponse({ users: data })
 }
 
 // PUT update user role
@@ -51,19 +43,16 @@ export async function PUT(req: NextRequest) {
       return createAdminError('Invalid role', 400)
     }
 
-    const supabase = await createClient()
-    const { data, error } = await supabase
-      .from('staff_profiles')
-      .update({ role })
-      .eq('id', id)
-      .select()
-      .single()
+    const res = await query(
+      'UPDATE public.staff_profiles SET role = $2 WHERE id = $1 RETURNING *',
+      [id, role]
+    )
 
-    if (error) {
-      return createAdminError(error.message, 500)
+    if (res.rowCount === 0) {
+      return createAdminError('User not found', 404)
     }
 
-    return createAdminResponse({ user: data })
+    return createAdminResponse({ user: res.rows[0] })
   } catch (error: any) {
     return createAdminError(error.message, 500)
   }
@@ -76,22 +65,18 @@ export async function DELETE(req: NextRequest) {
     return createAdminError('Unauthorized', 403)
   }
 
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+
+  if (!id) {
+    return createAdminError('User ID is required', 400)
+  }
+
   try {
-    const { searchParams } = new URL(req.url)
-    const id = searchParams.get('id')
-
-    if (!id) {
-      return createAdminError('User ID is required', 400)
-    }
-
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const adminClient = createAdminClient()
-
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(id)
-
-    if (deleteError) {
-      return createAdminError(deleteError.message, 500)
-    }
+    // In a self-hosted PostgreSQL setup, we delete from the users and staff_profiles tables
+    // We assume there's a cascade or we do it manually
+    await query('DELETE FROM public.staff_profiles WHERE id = $1', [id])
+    await query('DELETE FROM public.users WHERE id = $1', [id])
 
     return createAdminResponse({ success: true, message: 'User deleted successfully' })
   } catch (error: any) {

@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = "force-dynamic"
 
 import { useEffect, useState } from 'react'
 import { Store, MapPin, Phone, Globe, Palette, Clock, Save } from 'lucide-react'

@@ -1,10 +1,9 @@
 export const dynamic = 'force-dynamic'
-
 import { Header } from '@/components/layout/header'
 import Link from 'next/link'
 import { SearchBar } from '@/components/home/search-bar'
 import { RestaurantSection } from '@/components/home/restaurant-section'
-import pb from '@/utils/pocketbase'
+import { query } from '@/lib/db'
 import { X, Search, Store, Utensils } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MenuItemCard } from '@/components/restaurant/menu-item-card'
@@ -27,38 +26,76 @@ export default async function RestaurantsPage({
 }) {
   const { category, tab, city, minPrice, maxPrice, sort, restaurantId, q } = await searchParams
 
-  // 1. Fetch Filter Data
-  const [categories, restaurantsList] = await Promise.all([
-    pb.collection('categories').getFullList({ sort: 'sort_order' }),
-    pb.collection('restaurants').getFullList({ fields: 'id, city, name_ru, name_kk' })
+  // 1. Fetch Filter Data via SQL
+  const [categoriesRes, restaurantsListRes] = await Promise.all([
+    query('SELECT * FROM categories ORDER BY sort_order ASC', []),
+    query('SELECT id, address as city, name_ru, name_kk FROM restaurants', []) // city is stored in address or similar? schema said address
   ])
 
+  const categoriesData = categoriesRes.rows
+  const restaurantsListData = restaurantsListRes.rows
+
   // Deduplicate categories by name
-  const allCategories = Array.from(new Map(categories?.map(c => [c.name_ru, c]) || []).values())
-  const uniqueCities = Array.from(new Set(restaurantsList?.map(r => r.city).filter(Boolean) || []))
+  const allCategories = Array.from(new Map(categoriesData?.map((c: any) => [c.name_ru, c]) || []).values())
+  const uniqueCities = Array.from(new Set(restaurantsListData?.map((r: any) => r.city).filter(Boolean) || []))
 
   // 2. Handle Filtered View (Category, Price, etc.)
   if (category || minPrice || maxPrice || restaurantId || (tab === 'food' && sort)) {
-    let filterParts = ['is_available = true']
-    
+    let whereClause = 'WHERE m.is_available = true'
+    let params: any[] = []
+    let pIdx = 1
+
     if (category) {
-        const catFilter = categories.filter(c => c.name_kk === category || c.name_ru === category).map(c => `category_id = "${c.id}"`).join(' || ')
-        if (catFilter) filterParts.push(`(${catFilter})`)
+        const catIds = categoriesData.filter((c: any) => c.name_kk === category || c.name_ru === category).map((c: any) => c.id)
+        if (catIds.length > 0) {
+            whereClause += ` AND m.category_id = ANY($${pIdx}::uuid[])`
+            params.push(catIds)
+            pIdx++
+        }
     }
     
-    if (city) filterParts.push(`cafe_id.city = "${city}"`)
-    if (restaurantId) filterParts.push(`cafe_id = "${restaurantId}"`)
-    if (minPrice) filterParts.push(`price >= ${minPrice}`)
-    if (maxPrice) filterParts.push(`price <= ${maxPrice}`)
-    if (q) filterParts.push(`(name_kk ~ "${q}" || name_ru ~ "${q}" || description_kk ~ "${q}" || description_ru ~ "${q}")`)
+    if (city) {
+        whereClause += ` AND r.address ILIKE $${pIdx}`
+        params.push(`%${city}%`)
+        pIdx++
+    }
 
-    const sortOrder = sort === 'price_asc' ? 'price' : sort === 'price_desc' ? '-price' : 'sort_order'
+    if (restaurantId) {
+        whereClause += ` AND m.cafe_id = $${pIdx}`
+        params.push(restaurantId)
+        pIdx++
+    }
+
+    if (minPrice) {
+        whereClause += ` AND m.price >= $${pIdx}`
+        params.push(parseFloat(minPrice))
+        pIdx++
+    }
+
+    if (maxPrice) {
+        whereClause += ` AND m.price <= $${pIdx}`
+        params.push(parseFloat(maxPrice))
+        pIdx++
+    }
+
+    if (q) {
+        whereClause += ` AND (m.name_kk ILIKE $${pIdx} OR m.name_ru ILIKE $${pIdx} OR m.description_kk ILIKE $${pIdx} OR m.description_ru ILIKE $${pIdx})`
+        params.push(`%${q}%`)
+        pIdx++
+    }
+
+    const sortOrder = sort === 'price_asc' ? 'm.price ASC' : sort === 'price_desc' ? 'm.price DESC' : 'm.sort_order ASC'
     
-    const menuItems = await pb.collection('menu_items').getFullList({
-        filter: filterParts.join(' && '),
-        sort: sortOrder,
-        expand: 'cafe_id'
-    })
+    const menuItemsRes = await query(`
+        SELECT m.*, 
+               json_build_object('id', r.id, 'name_ru', r.name_ru, 'name_en', r.name_en, 'name_kk', r.name_kk) as restaurants
+        FROM menu_items m
+        JOIN restaurants r ON m.cafe_id = r.id
+        ${whereClause}
+        ORDER BY ${sortOrder}
+    `, params)
+
+    const menuItems = menuItemsRes.rows
 
     return (
       <div className="flex flex-col min-h-screen pb-16 bg-muted/20">
@@ -70,7 +107,7 @@ export default async function RestaurantsPage({
               <FilterDrawer
                 categories={allCategories as any[] || []}
                 cities={uniqueCities as string[]}
-                restaurants={restaurantsList as any[] || []}
+                restaurants={restaurantsListData as any[] || []}
                 currentParams={{ category, city, minPrice, maxPrice, sort, restaurantId }}
               />
             </div>
@@ -99,9 +136,7 @@ export default async function RestaurantsPage({
                     layout="horizontal"
                     item={{
                       ...item,
-                      restaurant: item.expand?.cafe_id
-                        ? { id: item.expand.cafe_id.id, name_ru: item.expand.cafe_id.name_ru, name_en: item.expand.cafe_id.name_en }
-                        : undefined,
+                      restaurant: item.restaurants
                     }}
                   />
                 ))}
@@ -122,24 +157,43 @@ export default async function RestaurantsPage({
   // 3. Tabbed View
   const activeTab = tab || 'all'
   
-  let resFilterParts = ['is_open = true']
-  if (city) resFilterParts.push(`city = "${city}"`)
-  if (q) resFilterParts.push(`(name_kk ~ "${q}" || name_ru ~ "${q}" || description_kk ~ "${q}" || description_ru ~ "${q}")`)
+  let resWhere = 'WHERE is_open = true'
+  let resParams: any[] = []
+  let rIdx = 1
+  if (city) {
+      resWhere += ` AND address ILIKE $${rIdx}`
+      resParams.push(`%${city}%`)
+      rIdx++
+  }
+  if (q) {
+      resWhere += ` AND (name_kk ILIKE $${rIdx} OR name_ru ILIKE $${rIdx} OR description_kk ILIKE $${rIdx} OR description_ru ILIKE $${rIdx})`
+      resParams.push(`%${q}%`)
+      rIdx++
+  }
 
-  let menuFilterParts = ['is_available = true']
-  if (q) menuFilterParts.push(`(name_kk ~ "${q}" || name_ru ~ "${q}" || description_kk ~ "${q}" || description_ru ~ "${q}")`)
+  let menuWhere = 'WHERE m.is_available = true'
+  let menuParams: any[] = []
+  let mIdx = 1
+  if (q) {
+      menuWhere += ` AND (m.name_kk ILIKE $${mIdx} OR m.name_ru ILIKE $${mIdx} OR m.description_kk ILIKE $${mIdx} OR m.description_ru ILIKE $${mIdx})`
+      menuParams.push(`%${q}%`)
+      mIdx++
+  }
 
-  const [restaurants, menuItems] = await Promise.all([
-    pb.collection('restaurants').getFullList({
-        filter: resFilterParts.join(' && '),
-        sort: '-rating,-created_at'
-    }),
-    pb.collection('menu_items').getFullList({
-        filter: menuFilterParts.join(' && '),
-        sort: 'sort_order',
-        expand: 'cafe_id'
-    })
+  const [restaurantsRes, menuItemsRes] = await Promise.all([
+    query(`SELECT * FROM restaurants ${resWhere} ORDER BY rating DESC, created_at DESC`, resParams),
+    query(`
+        SELECT m.*, 
+               json_build_object('id', r.id, 'name_ru', r.name_ru, 'name_en', r.name_en, 'name_kk', r.name_kk) as restaurants
+        FROM menu_items m
+        JOIN restaurants r ON m.cafe_id = r.id
+        ${menuWhere}
+        ORDER BY m.sort_order ASC
+    `, menuParams)
   ])
+
+  const restaurants = restaurantsRes.rows
+  const menuItems = menuItemsRes.rows
 
   return (
     <div className="flex flex-col min-h-screen pb-16 bg-muted/20">
@@ -151,7 +205,7 @@ export default async function RestaurantsPage({
             <FilterDrawer
               categories={allCategories as any[] || []}
               cities={uniqueCities as string[]}
-              restaurants={restaurantsList as any[] || []}
+              restaurants={restaurantsListData as any[] || []}
               currentParams={{ category, city, minPrice, maxPrice, sort, restaurantId }}
             />
           </div>
@@ -178,9 +232,7 @@ export default async function RestaurantsPage({
                         layout="horizontal"
                         item={{
                           ...item,
-                          restaurant: item.expand?.cafe_id
-                            ? { id: item.expand.cafe_id.id, name_ru: item.expand.cafe_id.name_ru, name_en: item.expand.cafe_id.name_en }
-                            : undefined,
+                          restaurant: item.restaurants
                         }}
                       />
                     ))}
@@ -210,9 +262,7 @@ export default async function RestaurantsPage({
                     layout="horizontal"
                     item={{
                       ...item,
-                      restaurant: item.expand?.cafe_id
-                        ? { id: item.expand.cafe_id.id, name_ru: item.expand.cafe_id.name_ru, name_en: item.expand.cafe_id.name_en }
-                        : undefined,
+                      restaurant: item.restaurants
                     }}
                   />
                 ))}

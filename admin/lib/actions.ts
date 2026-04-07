@@ -1,49 +1,43 @@
-import pb from '@/utils/pocketbase'
+'use server'
+
+import { query } from './db'
 import { revalidatePath } from 'next/cache'
 import { getCurrentRestaurantId } from './db'
 import { DEFAULT_CATEGORIES } from './constants'
 
 export async function getDebugInfo() {
-    const user = pb.authStore.model
+    // This will be updated once standalone auth is fully integrated
     return {
-        uid: user?.id,
-        email: user?.email,
-        role: user?.role
+        uid: null,
+        email: null,
+        role: null
     }
 }
 
 // Стандартты категорияларды ресторанға қосу (бар болса қайталамайды)
-export async function seedDefaultCategories(shouldRevalidate = true, restaurantId?: string) {
-    const id = restaurantId || await getCurrentRestaurantId()
-    if (!id) return { error: new Error('Unauthorized') }
+export async function seedDefaultCategories(restaurantId: string) {
+    if (!restaurantId) return { error: new Error('Unauthorized') }
 
-    // Бар категорияларды алу
     try {
-        const existing = await pb.collection('categories').getFullList({
-            filter: `cafe_id="${id}"`,
-            fields: 'name_kk',
-        })
+        const existing = await query(
+            'SELECT name_kk FROM public.categories WHERE cafe_id = $1',
+            [restaurantId]
+        )
 
-        const existingNames = new Set((existing || []).map((c: any) => c.name_kk))
+        const existingNames = new Set(existing.rows.map((c: any) => c.name_kk))
 
-        // Жоқ категорияларды ғана қосу
         const toInsert = DEFAULT_CATEGORIES
             .filter(c => !existingNames.has(c.name_kk))
-            .map(c => ({
-                name_kk: c.name_kk,
-                name_ru: c.name_ru,
-                name_en: c.name_en,
-                sort_order: c.sort_order,
-                cafe_id: id,
-                is_active: true,
-                icon_url: '',
-                is_combo: c.name_kk === 'Комболар' || c.name_kk === 'Combo'
-            }))
 
         if (toInsert.length === 0) return { error: null, added: 0 }
 
-        const createPromises = toInsert.map(item => pb.collection('categories').create(item))
-        await Promise.all(createPromises)
+        for (const c of toInsert) {
+            await query(
+                `INSERT INTO public.categories (name_kk, name_ru, name_en, sort_order, cafe_id, is_active, icon_url, is_combo) 
+                 VALUES ($1, $2, $3, $4, $5, true, '', $6)`,
+                [c.name_kk, c.name_ru, c.name_en, c.sort_order, restaurantId, c.name_kk === 'Комболар' || c.name_kk === 'Combo']
+            )
+        }
 
         return { error: null, added: toInsert.length }
     } catch (error) {
@@ -52,19 +46,25 @@ export async function seedDefaultCategories(shouldRevalidate = true, restaurantI
     }
 }
 
-export async function addMenuItem(payload: any, restaurantId?: string) {
-    const id = restaurantId || await getCurrentRestaurantId()
-    if (!id) return { data: null, error: new Error('Unauthorized') }
+export async function addMenuItem(payload: any, restaurantId: string) {
+    if (!restaurantId) return { data: null, error: new Error('Unauthorized') }
 
     try {
-        const finalPayload = {
-            ...payload,
-            cafe_id: id,
-        }
-
-        const record = await pb.collection('menu_items').create(finalPayload)
+        const res = await query(
+            `INSERT INTO public.menu_items (
+                cafe_id, category_id, name_kk, name_ru, name_en, 
+                description_kk, description_ru, description_en, 
+                price, image_url, is_available, is_popular, sort_order
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+            [
+                restaurantId, payload.category_id, payload.name_kk, payload.name_ru, payload.name_en,
+                payload.description_kk, payload.description_ru, payload.description_en,
+                payload.price, payload.image_url, payload.is_available ?? true, payload.is_popular ?? false,
+                payload.sort_order || 0
+            ]
+        )
         revalidatePath('/menu')
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Add MenuItem Error:', error)
         return { data: null, error }
@@ -73,9 +73,16 @@ export async function addMenuItem(payload: any, restaurantId?: string) {
 
 export async function updateMenuItem(id: string, payload: any) {
     try {
-        const record = await pb.collection('menu_items').update(id, payload)
+        const keys = Object.keys(payload)
+        const values = Object.values(payload)
+        const setClause = keys.map((key, index) => `${key} = $${index + 2}`).join(', ')
+
+        const res = await query(
+            `UPDATE public.menu_items SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        )
         revalidatePath('/menu')
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Update MenuItem Error:', error)
         return { data: null, error }
@@ -84,7 +91,7 @@ export async function updateMenuItem(id: string, payload: any) {
 
 export async function deleteMenuItem(id: string) {
     try {
-        await pb.collection('menu_items').delete(id)
+        await query('DELETE FROM public.menu_items WHERE id = $1', [id])
         revalidatePath('/menu')
         return { error: null }
     } catch (error) {
@@ -93,19 +100,20 @@ export async function deleteMenuItem(id: string) {
     }
 }
 
-export async function addCategory(payload: any, restaurantId?: string) {
-    const id = restaurantId || await getCurrentRestaurantId()
-    if (!id) return { data: null, error: new Error('Unauthorized') }
+export async function addCategory(payload: any, restaurantId: string) {
+    if (!restaurantId) return { data: null, error: new Error('Unauthorized') }
 
     try {
-        const finalPayload = {
-            ...payload,
-            cafe_id: id
-        }
-
-        const record = await pb.collection('categories').create(finalPayload)
+        const res = await query(
+            `INSERT INTO public.categories (cafe_id, name_kk, name_ru, name_en, sort_order, is_active, icon_url) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [
+                restaurantId, payload.name_kk, payload.name_ru, payload.name_en, 
+                payload.sort_order || 0, payload.is_active ?? true, payload.icon_url || ''
+            ]
+        )
         revalidatePath('/menu')
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Add Category Error:', error)
         return { data: null, error }
@@ -114,9 +122,16 @@ export async function addCategory(payload: any, restaurantId?: string) {
 
 export async function updateCategory(id: string, payload: any) {
     try {
-        const record = await pb.collection('categories').update(id, payload)
+        const keys = Object.keys(payload)
+        const values = Object.values(payload)
+        const setClause = keys.map((key, index) => `${key} = $${index + 2}`).join(', ')
+
+        const res = await query(
+            `UPDATE public.categories SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        )
         revalidatePath('/menu')
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Update Category Error:', error)
         return { data: null, error }
@@ -125,7 +140,7 @@ export async function updateCategory(id: string, payload: any) {
 
 export async function deleteCategory(id: string) {
     try {
-        await pb.collection('categories').delete(id)
+        await query('DELETE FROM public.categories WHERE id = $1', [id])
         revalidatePath('/menu')
         return { error: null }
     } catch (error) {
@@ -134,19 +149,17 @@ export async function deleteCategory(id: string) {
     }
 }
 
-export async function addTable(payload: any, restaurantId?: string) {
-    const id = restaurantId || await getCurrentRestaurantId()
-    if (!id) return { data: null, error: new Error('Unauthorized') }
+export async function addTable(payload: any, restaurantId: string) {
+    if (!restaurantId) return { data: null, error: new Error('Unauthorized') }
 
     try {
-        const finalPayload = {
-            ...payload,
-            cafe_id: id,
-        }
-
-        const record = await pb.collection('restaurant_tables').create(finalPayload)
+        const res = await query(
+            `INSERT INTO public.restaurant_tables (cafe_id, name, capacity, is_active) 
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [restaurantId, payload.name, payload.capacity || 2, payload.is_active ?? true]
+        )
         revalidatePath('/tables')
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Add Table Error:', error)
         return { data: null, error }
@@ -155,9 +168,16 @@ export async function addTable(payload: any, restaurantId?: string) {
 
 export async function updateTable(id: string, payload: any) {
     try {
-        const record = await pb.collection('restaurant_tables').update(id, payload)
+        const keys = Object.keys(payload)
+        const values = Object.values(payload)
+        const setClause = keys.map((key, index) => `${key} = $${index + 2}`).join(', ')
+
+        const res = await query(
+            `UPDATE public.restaurant_tables SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        )
         revalidatePath('/tables')
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Update Table Error:', error)
         return { data: null, error }
@@ -166,7 +186,7 @@ export async function updateTable(id: string, payload: any) {
 
 export async function deleteTable(id: string) {
     try {
-        await pb.collection('restaurant_tables').update(id, { is_active: false })
+        await query('UPDATE public.restaurant_tables SET is_active = false WHERE id = $1', [id])
         revalidatePath('/tables')
         return { error: null }
     } catch (error) {
@@ -228,27 +248,21 @@ export async function notifyAdminTelegram(order: any, restaurant: any) {
 }
 
 export async function updateWorkingHours(hours: any[], restaurantId?: string) {
-    const id = restaurantId || await getCurrentRestaurantId()
-    if (!id) return { error: new Error('Unauthorized') }
+    if (!restaurantId) return { error: new Error('Unauthorized') }
 
     try {
-        // 1. Get existing hours to delete them
-        const existing = await pb.collection('working_hours').getFullList({
-            filter: `cafe_id="${id}"`,
-        })
-
-        const deletePromises = existing.map(item => pb.collection('working_hours').delete(item.id))
-        await Promise.all(deletePromises)
+        // 1. Delete existing hours
+        await query('DELETE FROM public.working_hours WHERE cafe_id = $1', [restaurantId])
 
         // 2. Insert new hours
-        const createPromises = hours.map(({ id: hourId, created_at, updated_at, ...h }) => {
-            return pb.collection('working_hours').create({
-                ...h,
-                cafe_id: id
-            })
-        })
+        for (const h of hours) {
+            await query(
+                `INSERT INTO public.working_hours (cafe_id, day_of_week, open_time, close_time, is_day_off) 
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [restaurantId, h.day_of_week, h.open_time, h.close_time, h.is_day_off]
+            )
+        }
 
-        await Promise.all(createPromises)
         revalidatePath('/profile')
         return { error: null }
     } catch (error) {
@@ -258,22 +272,61 @@ export async function updateWorkingHours(hours: any[], restaurantId?: string) {
 }
 
 export async function updateCafeSettings(payload: any, restaurantId?: string) {
-    const id = restaurantId || await getCurrentRestaurantId()
-    if (!id) return { data: null, error: new Error('Unauthorized') }
-
-    const user = pb.authStore.model
-    if (!user) return { data: null, error: new Error('Unauthorized') }
+    if (!restaurantId) return { data: null, error: new Error('Unauthorized') }
 
     try {
-        const record = await pb.collection('restaurants').update(id, payload)
+        const keys = Object.keys(payload)
+        const values = Object.values(payload)
+        const setClause = keys.map((key, index) => `${key} = $${index + 2}`).join(', ')
+
+        const res = await query(
+            `UPDATE public.restaurants SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [restaurantId, ...values]
+        )
         
         revalidatePath('/profile')
-        revalidatePath('/') // Dashboard might display some settings
-        revalidatePath(`/restaurant/${id}`)
+        revalidatePath('/') 
+        revalidatePath(`/restaurant/${restaurantId}`)
         
-        return { data: record, error: null }
+        return { data: res.rows[0], error: null }
     } catch (error) {
         console.error('Update Cafe Settings Error:', error)
+        return { data: null, error }
+    }
+}
+
+export async function updateOrderStatus(id: string, payload: any) {
+    try {
+        const keys = Object.keys(payload)
+        const values = Object.values(payload)
+        const setClause = keys.map((key, index) => `${key} = $${index + 2}`).join(', ')
+
+        const res = await query(
+            `UPDATE public.orders SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        )
+        revalidatePath('/orders')
+        return { data: res.rows[0], error: null }
+    } catch (error) {
+        console.error('Update Order Status Error:', error)
+        return { data: null, error }
+    }
+}
+
+export async function updateReservationStatus(id: string, payload: any) {
+    try {
+        const keys = Object.keys(payload)
+        const values = Object.values(payload)
+        const setClause = keys.map((key, index) => `${key} = $${index + 2}`).join(', ')
+
+        const res = await query(
+            `UPDATE public.reservations SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        )
+        revalidatePath('/orders')
+        return { data: res.rows[0], error: null }
+    } catch (error) {
+        console.error('Update Reservation Status Error:', error)
         return { data: null, error }
     }
 }

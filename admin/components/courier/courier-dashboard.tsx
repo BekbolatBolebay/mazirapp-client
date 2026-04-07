@@ -1,8 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Courier, CourierSession } from './courier-utils'
+import { CourierSession } from './courier-utils'
 import { Order } from '@/lib/db'
 import { toast } from 'sonner'
 import { Loader2, Package, MapPin, Phone, LogOut, CheckCircle2, Bike, Navigation } from 'lucide-react'
@@ -19,64 +18,68 @@ export function CourierDashboard({ initialCourier, onLogout }: CourierDashboardP
     const [updatingId, setUpdatingId] = useState<string | null>(null)
 
     useEffect(() => {
-        async function fetchOrders() {
-            const supabase = createClient()
-            const { data, error } = await supabase
-                .from('orders')
-                .select('*, items:order_items(*)')
-                .eq('courier_id', initialCourier.id)
-                .in('status', ['accepted', 'preparing', 'ready', 'on_the_way', 'delivered'])
-                .order('created_at', { ascending: false })
-
-            if (error) {
-                toast.error('Тапсырыстарды жүктеу мүмкін болмады')
-            } else {
-                setOrders(data || [])
+        const fetchOrders = async () => {
+            try {
+                const res = await fetch('/api/admin/couriers/orders')
+                if (res.ok) {
+                    const data = await res.json()
+                    setOrders(data.orders)
+                }
+            } catch (error) {
+                console.error('[CourierDashboard] Error fetching orders:', error)
+            } finally {
+                setIsLoading(false)
             }
-            setIsLoading(false)
+        }
+
+        const updateLocation = async () => {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    await fetch('/api/admin/couriers/orders', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            current_lat: position.coords.latitude,
+                            current_lng: position.coords.longitude
+                        })
+                    })
+                })
+            }
         }
 
         fetchOrders()
+        updateLocation()
 
-        const supabase = createClient()
-        const channel = supabase
-            .channel('courier_orders')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'orders',
-                filter: `courier_id=eq.${initialCourier.id}`
-            }, () => {
-                fetchOrders()
-            })
-            .subscribe()
+        const interval = setInterval(() => {
+            fetchOrders()
+            updateLocation()
+        }, 30000) // Poll every 30 seconds
 
-        return () => {
-            supabase.removeChannel(channel)
-        }
-    }, [initialCourier.id])
+        return () => clearInterval(interval)
+    }, [])
 
     const updateStatus = async (orderId: string, nextStatus: string) => {
         if (updatingId) return
         setUpdatingId(orderId)
         
-        const supabase = createClient()
-        const { error } = await supabase
-            .from('orders')
-            .update({ 
-                status: nextStatus, 
-                updated_at: new Date().toISOString() 
+        try {
+            const res = await fetch('/api/admin/couriers/orders', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: orderId, status: nextStatus })
             })
-            .eq('id', orderId)
 
-        if (error) {
-            toast.error('Күйді жаңарту мүмкін болмады')
-        } else {
-            toast.success(nextStatus === 'completed' ? 'Тапсырыс аяқталды ✅' : 'Күй жаңартылды')
-            // Refresh local state immediately for better UX
-            setOrders(prev => prev.filter(o => o.id !== orderId || nextStatus !== 'completed'))
+            if (res.ok) {
+                toast.success(nextStatus === 'completed' ? 'Тапсырыс аяқталды ✅' : 'Күй жаңартылды')
+                setOrders(prev => prev.filter(o => o.id !== orderId || nextStatus !== 'completed'))
+            } else {
+                toast.error('Күйді жаңарту мүмкін болмады')
+            }
+        } catch (error) {
+            toast.error('Сервермен байланыс жоқ')
+        } finally {
+            setUpdatingId(null)
         }
-        setUpdatingId(null)
     }
 
     if (isLoading) {
@@ -95,7 +98,7 @@ export function CourierDashboard({ initialCourier, onLogout }: CourierDashboardP
                         <Bike className="w-6 h-6" />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold">{initialCourier.full_name || 'Курьер'}</h1>
+                        <h1 className="text-lg font-bold">{initialCourier.name || 'Курьер'}</h1>
                         <p className="text-xs text-gray-500">Сәтті жұмыс!</p>
                     </div>
                 </div>
@@ -118,7 +121,7 @@ export function CourierDashboard({ initialCourier, onLogout }: CourierDashboardP
                         <div key={order.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 space-y-4">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h3 className="font-black text-lg">#{order.order_number}</h3>
+                                    <h3 className="font-black text-lg">#{order.order_number || order.id.slice(0, 8)}</h3>
                                     <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleTimeString()}</p>
                                 </div>
                                 <div className="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-bold uppercase tracking-widest">
@@ -154,7 +157,7 @@ export function CourierDashboard({ initialCourier, onLogout }: CourierDashboardP
                             <div className="pt-4 border-t border-gray-50 flex gap-2">
                                 {order.status === 'ready' && (
                                     <button
-                                        onClick={() => updateStatus(order.id, 'on_the_way')}
+                                        onClick={() => updateStatus(order.id, 'on_delivery')}
                                         disabled={updatingId === order.id}
                                         className="flex-1 bg-primary text-primary-foreground py-3 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
                                     >
@@ -162,9 +165,9 @@ export function CourierDashboard({ initialCourier, onLogout }: CourierDashboardP
                                         Тапсырысты алу
                                     </button>
                                 )}
-                                {order.status === 'on_the_way' && (
+                                {order.status === 'on_delivery' && (
                                     <button
-                                        onClick={() => updateStatus(order.id, 'completed')}
+                                        onClick={() => updateStatus(order.id, 'delivered')}
                                         disabled={updatingId === order.id}
                                         className="flex-1 bg-green-600 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
                                     >
@@ -173,7 +176,7 @@ export function CourierDashboard({ initialCourier, onLogout }: CourierDashboardP
                                         ) : (
                                             <CheckCircle2 className="w-5 h-5" />
                                         )}
-                                        Жеткізілді және Аяқталды
+                                        Жеткізілді
                                     </button>
                                 )}
                             </div>

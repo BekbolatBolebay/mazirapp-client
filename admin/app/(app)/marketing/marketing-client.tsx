@@ -5,7 +5,6 @@ import { ArrowLeft, Plus, Pencil, Trash2, X, Check, Ticket, Image as ImageIcon }
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
 import { t } from '@/lib/i18n'
-import { createClient } from '@/lib/supabase/client'
 import type { Promotion, Banner } from '@/lib/db'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -24,7 +23,7 @@ const EMPTY_PROMO: EditingPromo = {
     temp_discount_type: 'percent',
     temp_discount_value: 0,
     min_order_amount: 0,
-    max_uses: null,
+    max_uses: undefined,
     is_active: true,
     isNew: true,
 }
@@ -47,18 +46,14 @@ export default function MarketingClient({ initialPromoCodes, initialBanners }: P
     const [editingPromo, setEditingPromo] = useState<EditingPromo | null>(null)
     const [editingBanner, setEditingBanner] = useState<EditingBanner | null>(null)
 
-    const supabase = createClient()
-
     async function savePromo() {
         if (!editingPromo) return
         const dType = editingPromo.temp_discount_type || (editingPromo.discount_percentage ? 'percent' : 'fixed')
         const dValue = editingPromo.temp_discount_value || (dType === 'percent' ? editingPromo.discount_percentage : editingPromo.discount_amount) || 0
 
         const payload = {
+            id: editingPromo.id,
             promo_code: editingPromo.promo_code?.toUpperCase() || '',
-            code: editingPromo.promo_code?.toUpperCase() || '', // compatibility
-            title_kk: `Жеңілдік ${editingPromo.promo_code}`,
-            title_ru: `Скидка ${editingPromo.promo_code}`,
             discount_percentage: dType === 'percent' ? Number(dValue) : null,
             discount_amount: dType === 'fixed' ? Number(dValue) : null,
             min_order_amount: Number(editingPromo.min_order_amount) || 0,
@@ -67,29 +62,41 @@ export default function MarketingClient({ initialPromoCodes, initialBanners }: P
             valid_until: editingPromo.valid_until || null,
         }
 
+        const method = editingPromo.isNew ? 'POST' : 'PUT'
+        const res = await fetch('/api/admin/promotions', {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+
+        if (!res.ok) {
+            toast.error(t(lang, 'error'))
+            return
+        }
+
+        const data = await res.json()
         if (editingPromo.isNew) {
-            const { data, error } = await supabase.from('promotions').insert(payload).select('*').single()
-            if (error) { console.error(error); toast.error(t(lang, 'error')); return }
             setPromoCodes((prev) => [data, ...prev])
         } else {
-            const { error } = await supabase.from('promotions')
-                .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingPromo.id!)
-            if (error) { console.error(error); toast.error(t(lang, 'error')); return }
-            setPromoCodes((prev) => prev.map((p) => p.id === editingPromo.id ? { ...p, ...payload } : p))
+            setPromoCodes((prev) => prev.map((p) => p.id === editingPromo.id ? data : p))
         }
         setEditingPromo(null)
         toast.success(t(lang, 'save'))
     }
 
     async function deletePromo(id: string) {
-        const { error } = await supabase.from('promotions').delete().eq('id', id)
-        if (!error) setPromoCodes((prev) => prev.filter((p) => p.id !== id))
-        else toast.error(t(lang, 'error'))
+        const res = await fetch(`/api/admin/promotions?id=${id}`, { method: 'DELETE' })
+        if (res.ok) {
+            setPromoCodes((prev) => prev.filter((p) => p.id !== id))
+        } else {
+            toast.error(t(lang, 'error'))
+        }
     }
 
     async function saveBanner() {
         if (!editingBanner) return
         const payload = {
+            id: editingBanner.id,
             title_kk: editingBanner.title_kk || '',
             title_ru: editingBanner.title_ru || '',
             image_url: editingBanner.image_url || '',
@@ -98,24 +105,35 @@ export default function MarketingClient({ initialPromoCodes, initialBanners }: P
             is_active: editingBanner.is_active ?? true,
         }
 
+        const method = editingBanner.isNew ? 'POST' : 'PUT'
+        const res = await fetch('/api/admin/banners', {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+
+        if (!res.ok) {
+            toast.error(t(lang, 'error'))
+            return
+        }
+
+        const data = await res.json()
         if (editingBanner.isNew) {
-            const { data, error } = await supabase.from('banners').insert(payload).select('*').single()
-            if (error) { toast.error(t(lang, 'error')); return }
             setBanners((prev) => [...prev, data].sort((a, b) => a.sort_order - b.sort_order))
         } else {
-            const { error } = await supabase.from('banners')
-                .update({ ...payload }).eq('id', editingBanner.id!)
-            if (error) { toast.error(t(lang, 'error')); return }
-            setBanners((prev) => prev.map((b) => b.id === editingBanner.id ? { ...b, ...payload } : b).sort((a, b) => a.sort_order - b.sort_order))
+            setBanners((prev) => prev.map((b) => b.id === editingBanner.id ? data : b).sort((a, b) => a.sort_order - b.sort_order))
         }
         setEditingBanner(null)
         toast.success(t(lang, 'save'))
     }
 
     async function deleteBanner(id: string) {
-        const { error } = await supabase.from('banners').delete().eq('id', id)
-        if (!error) setBanners((prev) => prev.filter((b) => b.id !== id))
-        else toast.error(t(lang, 'error'))
+        const res = await fetch(`/api/admin/banners?id=${id}`, { method: 'DELETE' })
+        if (res.ok) {
+            setBanners((prev) => prev.filter((b) => b.id !== id))
+        } else {
+            toast.error(t(lang, 'error'))
+        }
     }
 
     return (

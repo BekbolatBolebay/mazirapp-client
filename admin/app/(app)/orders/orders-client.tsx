@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { UtensilsCrossed, Pencil, X, Phone, MapPin, Package, Calendar, Users, CreditCard, CheckCircle2, Clock, Search, Bike, PartyPopper, Hash, ChevronRight, XCircle, Loader2, MessageCircle, Truck, ChefHat, CheckCircle, Star } from 'lucide-react'
 import { useApp } from '@/lib/app-context'
 import { t } from '@/lib/i18n'
-import { createClient } from '@/lib/supabase/client'
 import type { Order, Reservation, RestaurantTable } from '@/lib/db'
+import { updateOrderStatus, updateReservationStatus } from '@/lib/actions'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -130,10 +130,11 @@ interface Props {
   restaurant: import('@/lib/db').Restaurant | null
 }
 
-type ActivityItem = Order & {
+type ActivityItem = Order & Partial<Reservation> & {
   order_num: string
   items_total: number
-  activity_type: Order['type']
+  activity_type: Order['type'] | 'dine_in'
+  user_id?: string
 }
 
 export default function OrdersClient({ initialOrders, initialReservations, restaurant }: Props) {
@@ -158,7 +159,7 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
         customer_name: (o as any).clients?.full_name || o.customer_name || 'Клиент',
         order_items: mappedItems,
         review: (o as any).reviews?.[0] || null // Map review if joined
-      }
+      } as ActivityItem
     }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }
 
@@ -227,13 +228,15 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   // Fetch couriers & tables
   useEffect(() => {
     async function fetchData() {
-      const supabase = createClient()
-      const [cRes, tRes] = await Promise.all([
-        supabase.from('staff_profiles').select('*').eq('role', 'courier'),
-        supabase.from('restaurant_tables').select('*').eq('cafe_id', restaurant?.id).order('table_number')
-      ])
-      if (cRes.data) setCouriers(cRes.data)
-      if (tRes.data) setTables(tRes.data)
+      try {
+        const res = await fetch('/api/admin/tables')
+        if (res.ok) {
+          const data = await res.json()
+          setTables(data.tables || [])
+        }
+      } catch (err) {
+        console.error('Fetch tables error:', err)
+      }
     }
     if (restaurant?.id) fetchData()
   }, [restaurant?.id])
@@ -242,60 +245,42 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   useEffect(() => {
     if (!restaurant?.id) return;
 
-    const fetchOrders = async () => {
+    const fetchUpdates = async () => {
       try {
-        const supabase = createClient()
-        // We fetch the latest 50 orders just to sync missing ones
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*, restaurants!cafe_id(*), order_items(*, menu_items(*))')
-          .eq('cafe_id', restaurant.id)
-          .order('created_at', { ascending: false })
-          .limit(50)
+        const [ordersRes, resRes] = await Promise.all([
+          fetch('/api/admin/orders'),
+          fetch('/api/admin/reservations')
+        ])
 
-        if (error) {
-          console.error('[Admin Orders] Sync error:', error)
-          return
+        if (ordersRes.ok) {
+            const data = await ordersRes.json()
+            if (data.orders) {
+                const fetchedItems = mergeItems(data.orders)
+                setItems(fetchedItems)
+            }
         }
 
-        if (data && data.length > 0) {
-          const fetchedItems = mergeItems(data as unknown as Order[])
-          setItems(prev => {
-            const newArray = [...prev]
-            let changed = false
-            fetchedItems.forEach(fetched => {
-              const idx = newArray.findIndex(i => i.id === fetched.id)
-              if (idx >= 0) {
-                if (newArray[idx].status !== fetched.status || newArray[idx].order_items?.length !== fetched.order_items?.length) {
-                  newArray[idx] = { ...newArray[idx], ...fetched }
-                  changed = true
-                }
-              } else {
-                newArray.push(fetched)
-                changed = true
-              }
-            })
-            if (changed) {
-              return newArray.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        if (resRes.ok) {
+            const data = await resRes.json()
+            if (data.reservations) {
+                setReservations(data.reservations)
             }
-            return prev
-          })
         }
       } catch (e) {
         console.error('[Admin Orders] Polling error:', e)
       }
     }
 
-    const intervalId = setInterval(fetchOrders, 30000)
+    const intervalId = setInterval(fetchUpdates, 8000)
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        fetchOrders()
+        fetchUpdates()
       }
     }
     
     const handleFocus = () => {
-      fetchOrders()
+      fetchUpdates()
     }
 
     window.addEventListener('visibilitychange', handleVisibilityChange)
@@ -308,103 +293,7 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
     }
   }, [restaurant?.id])
 
-  // Real-time subscription for Orders & Reservations
-  useEffect(() => {
-    if (!restaurant?.id) return
 
-    const supabase = createClient()
-    const ordersChannel = supabase
-      .channel(`orders-realtime-${restaurant.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `cafe_id=eq.${restaurant.id}` }, async (payload) => {
-          console.log('[Admin Orders] Real-time event:', payload.eventType, (payload.new as any)?.id || (payload.old as any)?.id)
-          
-          if (payload.eventType === 'DELETE') {
-            setItems((prev) => prev.filter((o) => o.id !== (payload.old as any).id))
-            return
-          }
-
-          const o = payload.new as any
-          if (!o) return
-
-          const fetchDetails = async () => {
-            try {
-              // Wait 1 second to allow client to insert order_items
-              await new Promise(resolve => setTimeout(resolve, 1000))
-              
-              // Fetch items, customer name and reviews in parallel
-              const [itemsRes, clientRes, reviewsRes] = await Promise.all([
-                supabase.from('order_items').select('*, menu_items(*)').eq('order_id', o.id),
-                supabase.from('clients').select('full_name').eq('id', o.user_id).maybeSingle(),
-                supabase.from('reviews').select('*').eq('order_id', o.id).maybeSingle()
-              ])
-
-              const mappedItems = itemsRes.data?.map((item: any) => ({
-                ...item,
-                name_kk: item.menu_items?.name_kk || item.name_kk || 'Белгісіз тағам',
-                name_ru: item.menu_items?.name_ru || item.name_ru || 'Неизвестное блюдо'
-              }))
-
-              const newItem = { 
-                ...o, 
-                order_num: String(o.order_number), 
-                items_total: o.items_count, 
-                activity_type: o.type, 
-                status: o.status === 'delivered' ? 'completed' : o.status,
-                order_items: mappedItems || [],
-                customer_name: clientRes.data?.full_name || o.customer_name || 'Клиент',
-                review: reviewsRes.data || null
-              }
-              
-              setItems((prev) => {
-                const exists = prev.find(item => item.id === o.id)
-                if (exists) {
-                  return prev.map(item => item.id === o.id ? { ...item, ...newItem } : item)
-                }
-                return [newItem, ...prev]
-              })
-              
-              if (payload.eventType === 'INSERT') {
-                await playSound('new-order')
-                toast.success(lang === 'kk' ? 'Жаңа тапсырыс!' : 'Новый заказ!')
-              }
-            } catch (error) {
-              console.error('[Admin Orders] Error processing real-time order:', error)
-            }
-          }
-          fetchDetails()
-      }).subscribe()
-
-    const resChannel = supabase
-        .channel(`reservations-realtime-${restaurant.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations', filter: `cafe_id=eq.${restaurant.id}` }, (payload) => {
-            if (payload.eventType === 'INSERT') {
-                console.log('[Admin Orders] New reservation received:', { reservationId: payload.new.id })
-                
-                setReservations(prev => {
-                  const updated = [payload.new as Reservation, ...prev]
-                  console.log('[Admin Orders] Updated reservations list', { newCount: updated.length })
-                  return updated
-                })
-                
-                // Play sound for new reservation
-                console.log('[Admin Orders] Triggering sound for new reservation')
-                playSound('reservation')
-                
-                // Show toast notification
-                toast.info(lang === 'kk' ? 'Жаңа брондау келді!' : 'Новое бронирование!')
-            } else if (payload.eventType === 'UPDATE') {
-                setReservations(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...(payload.new as Reservation) } : r))
-            } else if (payload.eventType === 'DELETE') {
-                setReservations(prev => prev.filter(r => r.id !== payload.old.id))
-            }
-        }).subscribe()
-
-    return () => { 
-        console.log('[Admin Orders] Unsubscribing from real-time channels')
-        supabase.removeChannel(ordersChannel)
-        supabase.removeChannel(resChannel)
-    }
-  }, [lang, restaurant?.id])
 
 
   const tabCounts: Record<string, number> = {}
@@ -428,11 +317,8 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   })
 
   async function updateStatus(item: ActivityItem, newStatus: string, value?: string) {
-    const supabase = createClient()
+    const updates: any = { status: newStatus }
 
-    const updates: any = { status: newStatus, updated_at: new Date().toISOString() }
-
-    // Add estimated_ready_at if status becomes preparing
     if (newStatus === 'preparing') {
       const minutes = parseInt(value || prepTime) || 20
       const readyAt = new Date()
@@ -440,20 +326,16 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
       updates.estimated_ready_at = readyAt.toISOString()
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .update(updates)
-      .eq('id', item.id)
+    const { error, data } = await updateOrderStatus(item.id, updates)
 
     if (error) {
       toast.error(t(lang, 'error'))
     } else {
-      setItems((prev) => prev.map((o) => o.id === item.id ? { ...o, status: (newStatus as any) === 'delivered' ? 'completed' : newStatus as any } : o))
-      if (selected?.id === item.id) setSelected({ ...selected, status: (newStatus as any) === 'delivered' ? 'completed' : newStatus as any })
+      setItems((prev) => prev.map((o) => o.id === item.id ? { ...o, ...updates, status: (newStatus as any) === 'delivered' ? 'completed' : newStatus as any } : o))
+      if (selected?.id === item.id) setSelected({ ...selected, ...updates, status: (newStatus as any) === 'delivered' ? 'completed' : newStatus as any })
       setActiveModal(null)
       setModalItem(null)
 
-      // Send Push Notification to Customer
       if (item.user_id) {
         const draft = getStatusNotificationDraft(newStatus, item.order_num, lang)
         if (draft) {
@@ -495,57 +377,23 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   }
 
   async function confirmPayment(item: ActivityItem) {
-    const supabase = createClient()
-
     const updates: any = {
       payment_status: 'paid',
-      status: 'accepted',
-      updated_at: new Date().toISOString()
+      status: 'accepted'
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .update(updates)
-      .eq('id', item.id)
+    const { error } = await updateOrderStatus(item.id, updates)
 
     if (error) {
       toast.error(t(lang, 'error'))
     } else {
       toast.success(lang === 'kk' ? 'Төлем расталды!' : 'Оплата подтверждена!')
-      const updated = { ...item, payment_status: 'paid', status: updates.status } as ActivityItem
+      const updated = { ...item, ...updates } as ActivityItem
       setItems((prev) => prev.map((o) => o.id === item.id ? updated : o))
       if (selected?.id === item.id) setSelected(updated)
 
-      // Send Push Notification to Customer for Payment Confirmation
       if (item.user_id) {
         const draft = getStatusNotificationDraft(updates.status, item.order_num, lang)
-        
-        // Trigger push notification if fcm_token exists
-        if (draft && item.user_id) {
-          try {
-            // Fetch fcm_token
-            const { data: client } = await supabase
-              .from('clients')
-              .select('fcm_token')
-              .eq('id', item.user_id)
-              .single()
-
-            if (client?.fcm_token) {
-              await fetch('/api/notifications/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  token: client.fcm_token,
-                  title: draft.title,
-                  body: draft.body,
-                  url: draft.url
-                })
-              })
-            }
-          } catch (err) {
-            console.error('[Orders] Failed to send push notification:', err)
-          }
-        }
         if (draft) {
           notifyCustomer(item.user_id!, {
             title: draft.title,
@@ -562,23 +410,18 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
       toast.error(lang === 'kk' ? 'Сілтемені енгізіңіз' : 'Введите ссылку')
       return
     }
-    const supabase = createClient()
-    const updates: any = {
-      payment_url: url,
-      status: 'awaiting_payment',
-      updated_at: new Date().toISOString()
-    }
 
-    // Add estimated ready at if provided
     const minutes = parseInt(prepTime) || 20
     const readyAt = new Date()
     readyAt.setMinutes(readyAt.getMinutes() + minutes)
-    updates.estimated_ready_at = readyAt.toISOString()
 
-    const { error } = await supabase
-      .from('orders')
-      .update(updates)
-      .eq('id', item.id)
+    const updates: any = {
+      payment_url: url,
+      status: 'awaiting_payment',
+      estimated_ready_at: readyAt.toISOString()
+    }
+
+    const { error } = await updateOrderStatus(item.id, updates)
 
     if (error) {
       toast.error(t(lang, 'error'))
@@ -587,8 +430,7 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
       setManualPaymentUrl('')
       setActiveModal(null)
       setModalItem(null)
-      // Update local state to reflect the change immediately
-      const updated = { ...item, status: 'awaiting_payment', payment_url: url } as any
+      const updated = { ...item, ...updates } as any
       setSelected(null)
       setItems(prev => prev.map(i => i.id === item.id ? updated : i))
     }
@@ -597,52 +439,14 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   // Reservation Handlers
   async function handleResStatus(id: string, status: string) {
     setUpdating(id)
-    const supabase = createClient()
-    const { error } = await supabase.from('reservations').update({ status }).eq('id', id)
+    const { error, data } = await updateReservationStatus(id, { status })
     
-    // Trigger push notification for reservations
-    if (!error) {
-      try {
-        const { data: res } = await supabase
-          .from('reservations')
-          .select('customer_id, date, time')
-          .eq('id', id)
-          .single()
-
-        if (res?.customer_id) {
-          const { data: client } = await supabase
-            .from('clients')
-            .select('fcm_token')
-            .eq('id', res.customer_id)
-            .single()
-
-          if (client?.fcm_token) {
-            const draft = getReservationNotificationDraft(status as any, res.date, res.time, lang)
-            if (draft) {
-              await fetch('/api/notifications/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  token: client.fcm_token,
-                  title: draft.title,
-                  body: draft.body,
-                  url: draft.url
-                })
-              })
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[Orders] Failed to send reservation push:', err)
-      }
-    }
     if (error) {
         toast.error(lang === 'kk' ? 'Қате кетті' : 'Произошла ошибка')
     } else {
         setReservations(prev => prev.map(r => r.id === id ? { ...r, status: status as any } : r))
         toast.success(lang === 'kk' ? 'Статус жаңартылды' : 'Статус обновлён')
 
-        // Send Push Notification
         const res = reservations.find(r => r.id === id)
         if (res?.customer_id) {
             const draft = getReservationNotificationDraft(status, res.date, res.time.slice(0, 5), lang)
@@ -661,20 +465,18 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   async function handleResPaymentStatus(id: string, currentStatus: string, url?: string) {
     const newStatus = currentStatus === 'paid' ? 'pending' : 'paid'
     setUpdating(id)
-    const supabase = createClient()
     const update: any = { payment_status: newStatus }
     if (url) {
         update.payment_url = url
         update.status = 'awaiting_payment'
     }
-    const { error } = await supabase.from('reservations').update(update).eq('id', id)
+    const { error } = await updateReservationStatus(id, update)
     if (error) {
         toast.error(lang === 'kk' ? 'Қате кетті' : 'Произошла ошибка')
     } else {
         setReservations(prev => prev.map(r => r.id === id ? { ...r, payment_status: newStatus as any, status: url ? 'awaiting_payment' as any : r.status, payment_url: url || r.payment_url } : r))
         toast.success(lang === 'kk' ? 'Төлем статусы жаңартылды' : 'Статус оплаты обновлён')
 
-        // Send Push Notification if payment requested
         const res = reservations.find(r => r.id === id)
         if (res?.customer_id && url) {
             const draft = getReservationNotificationDraft('awaiting_payment', res.date, res.time.slice(0, 5), lang)
@@ -693,12 +495,10 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
   }
 
   async function assignCourier(item: ActivityItem, courierId?: string, oneTime?: { name: string, phone: string }) {
-    const supabase = createClient()
     const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
 
     const updates: any = {
       status: 'on_the_way',
-      updated_at: new Date().toISOString(),
       courier_tracking_token: token
     }
 
@@ -709,24 +509,12 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
       updates.one_time_courier_phone = oneTime.phone
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .update(updates)
-      .eq('id', item.id)
+    const { error } = await updateOrderStatus(item.id, updates)
 
     if (error) {
       toast.error(t(lang, 'error'))
     } else {
       toast.success(lang === 'kk' ? 'Курьер бекітілді!' : 'Курьер назначен!')
-      if (oneTime) {
-        // const trackingUrl = `${window.location.origin}/courier/track/${token}`
-        // const msg = lang === 'kk'
-        //   ? `Тапсырыс #${item.order_num} жеткізу сілтемесі: ${trackingUrl}`
-        //   : `Ссылка на доставку заказа #${item.order_num}: ${trackingUrl}`
-        // window.open(`https://wa.me/${oneTime.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank')
-      }
-
-      // Update local state
       const updatedItem = { ...item, ...updates } as any
       setItems(prev => prev.map(o => o.id === item.id ? updatedItem : o))
       if (selected?.id === item.id) setSelected(updatedItem)
@@ -797,6 +585,10 @@ export default function OrdersClient({ initialOrders, initialReservations, resta
           >
             <span className="text-xs">🔔</span>
           </button>
+          <div className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Live</span>
+          </div>
         </div>
 
         {/* Main tabs */}

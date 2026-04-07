@@ -5,7 +5,6 @@ import { ArrowLeft, Star, Send, User, Reply, X, Check } from 'lucide-react'
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
 import { t } from '@/lib/i18n'
-import { createClient } from '@/lib/supabase/client'
 import type { Review, Restaurant } from '@/lib/db'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -23,46 +22,41 @@ export default function ReviewsClient({ initialReviews, restaurant }: Props) {
     const [replyingTo, setReplyingTo] = useState<Review | null>(null)
     const [replyText, setReplyText] = useState('')
 
-    const supabase = createClient()
-
     useEffect(() => {
         if (!restaurant?.id) return
 
-        const channel = supabase
-            .channel(`reviews-realtime-${restaurant.id}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'reviews',
-                filter: `cafe_id=eq.${restaurant.id}`
-            }, (payload) => {
-                console.log('[Reviews] New review detected:', payload.new.id)
-                setReviews((prev) => [payload.new as Review, ...prev])
-                toast.success(lang === 'kk' ? 'Жаңа пікір!' : 'Новый отзыв!')
-            })
-            .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
+        const fetchReviews = async () => {
+            try {
+                const res = await fetch('/api/admin/reviews')
+                if (res.ok) {
+                    const data = await res.json()
+                    setReviews(data.reviews)
+                }
+            } catch (error) {
+                console.error('[Reviews] Error polling:', error)
+            }
         }
+
+        const interval = setInterval(fetchReviews, 30000) // Poll every 30 seconds
+        return () => clearInterval(interval)
     }, [restaurant?.id])
 
     async function sendReply() {
         if (!replyingTo || !replyText.trim()) return
-        const now = new Date().toISOString()
-        const { error } = await supabase
-            .from('reviews')
-            .update({
+        const res = await fetch('/api/admin/reviews', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                id: replyingTo.id, 
                 reply: replyText,
-                replied_at: now,
+                replied_at: new Date().toISOString()
             })
-            .eq('id', replyingTo.id)
+        })
 
-        if (!error) {
+        if (res.ok) {
+            const updated = await res.json()
             setReviews((prev) =>
-                prev.map((r) =>
-                    r.id === replyingTo.id ? { ...r, reply: replyText, replied_at: now } : r
-                )
+                prev.map((r) => r.id === replyingTo.id ? { ...r, ...updated } : r)
             )
             setReplyingTo(null)
             setReplyText('')
@@ -130,7 +124,7 @@ export default function ReviewsClient({ initialReviews, restaurant }: Props) {
                                     <button
                                         onClick={() => {
                                             setReplyingTo(r)
-                                            setReplyText(r.reply)
+                                            setReplyText(r.reply || '')
                                         }}
                                         className="text-[10px] text-primary font-medium mt-2"
                                     >

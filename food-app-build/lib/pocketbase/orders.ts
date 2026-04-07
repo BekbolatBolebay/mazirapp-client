@@ -1,3 +1,4 @@
+"use server"
 import { query } from '@/lib/db';
 
 export async function getUserOrders(userId?: string, phone?: string) {
@@ -31,8 +32,8 @@ export async function getUserReservations(userId?: string, phone?: string) {
     try {
         let sql = `
             SELECT r.*, res.name_kk as cafe_name, res.image_url as cafe_image
-            FROM reservations r
-            LEFT JOIN restaurants res ON r.cafe_id = res.id
+            FROM public.reservations r
+            LEFT JOIN public.restaurants res ON r.cafe_id = res.id
         `;
         let params: any[] = [];
 
@@ -53,7 +54,7 @@ export async function getUserReservations(userId?: string, phone?: string) {
         const res = await query(sql, params);
 
         // Map expected structure
-        return res.rows.map(row => ({
+        return res.rows.map((row: any) => ({
             ...row,
             restaurants: {
                 id: row.cafe_id,
@@ -67,7 +68,7 @@ export async function getUserReservations(userId?: string, phone?: string) {
     }
 }
 
-export function subscribeToOrders(callback: () => void) {
+export async function subscribeToOrders(callback: () => void) {
     // PG Real-time would require a separate setup (LISTEN/NOTIFY)
     // For now, we return a no-op unsubscribe
     console.warn('subscribeToOrders: Real-time not yet implemented for SQL backend');

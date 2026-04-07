@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/app-context'
 import { t } from '@/lib/i18n'
-import { createClient } from '@/lib/supabase/client'
 import type { Reservation } from '@/lib/db'
 import { cn } from '@/lib/utils'
 import { Calendar, Clock, Users, Phone, ChefHat, CheckCircle, XCircle, Loader2, ShoppingCart } from 'lucide-react'
@@ -39,26 +38,21 @@ const statusLabels: Record<string, { kk: string; ru: string }> = {
 }
 
 async function updateReservationStatus(id: string, status: string) {
-    const supabase = createClient()
-    const { error } = await supabase
-        .from('reservations')
-        .update({ status })
-        .eq('id', id)
-    return { error }
+    const res = await fetch(`/api/admin/reservations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status })
+    })
+    return { error: res.ok ? null : 'Error' }
 }
 
 async function updateReservationPaymentStatus(id: string, payment_status: string, payment_url?: string) {
-    const supabase = createClient()
-    const update: any = { payment_status }
-    if (payment_url) {
-        update.payment_url = payment_url
-        update.status = 'awaiting_payment'
-    }
-    const { error } = await supabase
-        .from('reservations')
-        .update(update)
-        .eq('id', id)
-    return { error }
+    const res = await fetch(`/api/admin/reservations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, payment_status, payment_url })
+    })
+    return { error: res.ok ? null : 'Error' }
 }
 
 export default function TablesClient({ initialTables, restaurantId }: { initialTables: RestaurantTable[], restaurantId: string }) {
@@ -69,23 +63,36 @@ export default function TablesClient({ initialTables, restaurantId }: { initialT
 
     async function handleAddTable() {
         if (!newTable.table_number) return
-        const { error, data } = await addTable(newTable, restaurantId)
-        if (error) toast.error('Қате кетті')
-        else {
+        const res = await fetch('/api/admin/tables', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: `Таблица ${newTable.table_number}`,
+                table_number: newTable.table_number,
+                capacity: newTable.capacity,
+                is_active: true
+            })
+        })
+
+        if (res.ok) {
+            const data = await res.json()
             setTables(prev => [...prev, data])
             setShowAddTable(false)
             setNewTable({ table_number: '', capacity: 4 })
-            toast.success('Үстел қосылды')
+            toast.success(lang === 'kk' ? 'Үстел қосылды' : 'Стол добавлен')
+        } else {
+            toast.error(t(lang, 'error'))
         }
     }
 
     async function handleDelete(id: string) {
         if (!confirm(t(lang, 'confirmDelete' as any))) return
-        const { error } = await deleteTable(id)
-        if (error) toast.error(t(lang, 'error'))
-        else {
+        const res = await fetch(`/api/admin/tables?id=${id}`, { method: 'DELETE' })
+        if (res.ok) {
             setTables(prev => prev.filter(t => t.id !== id))
             toast.success(t(lang, 'deleted' as any))
+        } else {
+            toast.error(t(lang, 'error'))
         }
     }
 

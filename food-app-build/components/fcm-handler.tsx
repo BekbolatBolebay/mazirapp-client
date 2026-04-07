@@ -1,30 +1,32 @@
+'use client'
+
 import { useEffect } from 'react'
 import { getFcmToken, onMessageListener } from '@/lib/firebase'
-import pb from '@/utils/pocketbase'
+import { useAuth } from '@/lib/auth/auth-context'
 import { toast } from 'sonner'
 
 export function FCMHandler() {
+    const { profile } = useAuth()
+
     useEffect(() => {
         const setupFCM = async () => {
             try {
-                const user = pb.authStore.model
-                
-                if (!user) return
+                if (!profile?.id) return
 
                 const token = await getFcmToken()
                 
                 if (token) {
-                    // Update fcm_token in users collection (was clients table in Supabase)
-                    await pb.collection('users').update(user.id, { 
-                        fcm_token: token,
-                        updated_at: new Date().toISOString()
+                    await fetch('/api/profile/fcm-token', {
+                        method: 'POST',
+                        body: JSON.stringify({ token, userId: profile.id }),
+                        headers: { 'Content-Type': 'application/json' }
                     })
                 }
 
                 // Listen for foreground messages
                 onMessageListener().then((payload: any) => {
                     console.log('[FCMHandler] Foreground message received:', payload)
-                    toast.success(payload.notification?.title || 'Новое уведомление', {
+                    toast.success(payload.notification?.title || 'Жаңа хабарлама', {
                         description: payload.notification?.body,
                     })
                 })
@@ -34,7 +36,7 @@ export function FCMHandler() {
         }
 
         setupFCM()
-    }, [])
+    }, [profile?.id])
 
     return null
 }

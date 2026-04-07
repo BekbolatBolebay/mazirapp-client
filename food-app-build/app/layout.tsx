@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+const fontStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from 'next-themes'
 import { AuthProvider } from '@/lib/auth/auth-context'
@@ -10,7 +10,6 @@ import { OrderStatusListener } from '@/components/notifications/order-status-lis
 import { FCMHandler } from '@/components/fcm-handler'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'] })
 
 export const metadata: Metadata = {
   title: 'Məzir APP - Food Delivery',
@@ -56,7 +55,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body style={{ fontFamily: fontStack }}>
         <ThemeProvider
           attribute="class"
           defaultTheme="light"

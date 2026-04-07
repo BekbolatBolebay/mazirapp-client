@@ -1,50 +1,34 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Database } from '@/lib/supabase/types'
-
-type Order = Database['public']['Tables']['orders']['Row']
 
 export function useRealtimeOrder(orderId: string) {
-  const [order, setOrder] = useState<Order | null>(null)
+  const [order, setOrder] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
+    if (!orderId) return
 
     const fetchOrder = async () => {
-      const { data } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .single()
-
-      setOrder(data)
-      setLoading(false)
+      try {
+        const res = await fetch(`/api/orders/${orderId}`)
+        const data = await res.json()
+        if (data && !data.error) {
+          setOrder(data)
+        }
+      } catch (error) {
+        console.error("Error fetching order:", error)
+      } finally {
+        setLoading(false)
+      }
     }
 
     fetchOrder()
 
-    const channel = supabase
-      .channel(`order:${orderId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `id=eq.${orderId}`,
-        },
-        (payload) => {
-          setOrder(payload.new as Order)
-        }
-      )
-      .subscribe()
+    // Polling every 5 seconds as a replacement for Realtime
+    const interval = setInterval(fetchOrder, 5000)
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => clearInterval(interval)
   }, [orderId])
 
   return { order, loading }

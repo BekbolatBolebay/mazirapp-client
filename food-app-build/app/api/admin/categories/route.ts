@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import { verifyAdmin, createAdminResponse, createAdminError } from '@/lib/auth/admin'
 
 // GET all global categories (cafe_id is null)
@@ -9,18 +9,14 @@ export async function GET(req: NextRequest) {
         return createAdminError('Unauthorized', 403)
     }
 
-    const supabase = await createClient()
-    const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .is('cafe_id', null)
-        .order('sort_order', { ascending: true })
-
-    if (error) {
+    try {
+        const res = await query(
+            'SELECT * FROM public.categories WHERE cafe_id IS NULL ORDER BY sort_order ASC'
+        )
+        return createAdminResponse({ categories: res.rows })
+    } catch (error: any) {
         return createAdminError(error.message, 500)
     }
-
-    return createAdminResponse({ categories: data })
 }
 
 // POST create global category
@@ -32,27 +28,20 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json()
-        const supabase = await createClient()
+        const res = await query(
+            `INSERT INTO public.categories (name_kk, name_ru, name_en, icon_url, sort_order, is_active, cafe_id) 
+             VALUES ($1, $2, $3, $4, $5, $6, NULL) RETURNING *`,
+            [
+                body.name_kk,
+                body.name_ru,
+                body.name_en || body.name_ru,
+                body.icon_url || '',
+                body.sort_order || 0,
+                body.is_active ?? true
+            ]
+        )
 
-        const { data, error } = await supabase
-            .from('categories')
-            .insert({
-                name_kk: body.name_kk,
-                name_ru: body.name_ru,
-                name_en: body.name_en || body.name_ru,
-                icon_url: body.icon_url || '',
-                sort_order: body.sort_order || 0,
-                is_active: body.is_active ?? true,
-                cafe_id: null
-            })
-            .select()
-            .single()
-
-        if (error) {
-            return createAdminError(error.message, 500)
-        }
-
-        return createAdminResponse({ category: data }, 201)
+        return createAdminResponse({ category: res.rows[0] }, 201)
     } catch (error: any) {
         return createAdminError(error.message, 500)
     }
@@ -73,19 +62,21 @@ export async function PUT(req: NextRequest) {
             return createAdminError('Category ID is required', 400)
         }
 
-        const supabase = await createClient()
-        const { data, error } = await supabase
-            .from('categories')
-            .update(updates)
-            .eq('id', id)
-            .select()
-            .single()
+        // Simple dynamic update (or we could just list all fields)
+        const keys = Object.keys(updates).filter(k => k !== 'id');
+        const values = keys.map(k => updates[k]);
+        const setClause = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
 
-        if (error) {
-            return createAdminError(error.message, 500)
+        const res = await query(
+            `UPDATE public.categories SET ${setClause} WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        )
+
+        if (res.rowCount === 0) {
+            return createAdminError('Category not found', 404)
         }
 
-        return createAdminResponse({ category: data })
+        return createAdminResponse({ category: res.rows[0] })
     } catch (error: any) {
         return createAdminError(error.message, 500)
     }
@@ -105,15 +96,10 @@ export async function DELETE(req: NextRequest) {
         return createAdminError('Category ID is required', 400)
     }
 
-    const supabase = await createClient()
-    const { error } = await supabase
-        .from('categories')
-        .delete()
-        .eq('id', id)
-
-    if (error) {
+    try {
+        await query('DELETE FROM public.categories WHERE id = $1', [id])
+        return createAdminResponse({ message: 'Category deleted successfully' })
+    } catch (error: any) {
         return createAdminError(error.message, 500)
     }
-
-    return createAdminResponse({ message: 'Category deleted successfully' })
 }

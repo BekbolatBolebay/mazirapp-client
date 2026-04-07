@@ -27,8 +27,8 @@ const EMPTY_ITEM: EditingItem = {
 
 export default function MenuClient({ initialItems, initialCategories, restaurantId }: Props) {
   const { lang } = useApp()
-  const [items, setItems] = useState<MenuItem[]>(initialItems)
-  const [categories, setCategories] = useState<Category[]>(initialCategories)
+  const [items, setItems] = useState<MenuItem[]>(Array.isArray(initialItems) ? initialItems : [])
+  const [categories, setCategories] = useState<Category[]>(Array.isArray(initialCategories) ? initialCategories : [])
   const [activeCat, setActiveCat] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<EditingItem | null>(null)

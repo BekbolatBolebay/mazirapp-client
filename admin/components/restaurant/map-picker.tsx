@@ -195,6 +195,17 @@ export function MapPicker({ open, onOpenChange, onSelect, initialCoords }: MapPi
                     >
                         <Navigation className="w-5 h-5 text-primary" />
                     </Button>
+
+                    {/* Floating Select Button for mobile/better UX */}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] px-4 w-full max-w-[200px]">
+                        <Button 
+                            className="w-full shadow-2xl h-12 font-black rounded-2xl bg-primary text-primary-foreground border-4 border-background"
+                            onClick={handleConfirm}
+                            disabled={loading}
+                        >
+                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : t(lang, 'confirmLocation')}
+                        </Button>
+                    </div>
                 </div>
 
                 <DialogFooter className="p-4 border-t">

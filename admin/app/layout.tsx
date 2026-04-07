@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+const fontStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 import { Analytics } from '@vercel/analytics/next'
 import { AppProvider } from '@/lib/app-context'
 import { PushPrompt } from '@/components/pwa/push-prompt'
@@ -9,7 +9,6 @@ import { FCMHandler } from '@/components/fcm-handler'
 import { SWRegister } from '@/components/pwa/sw-register'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'] })
 
 export const metadata: Metadata = {
   title: 'Məzir Admin - Кафе Админ-Панелі',
@@ -43,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
-      <body className={`${inter.className} font-sans antialiased bg-background text-foreground`}>
+      <body style={{ fontFamily: fontStack }} className={`font-sans antialiased bg-background text-foreground`}>
         <AppProvider>
           {children}
           <FCMHandler />

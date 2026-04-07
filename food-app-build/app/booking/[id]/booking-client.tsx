@@ -18,7 +18,6 @@ import {
     getBookingCart, addToBookingCart, updateBookingCartQuantity,
     clearBookingCart, BookingCartItem
 } from '@/lib/storage/booking-cart'
-import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -209,107 +208,64 @@ export default function BookingPage({ restaurantId }: { restaurantId: string }) 
         return () => window.removeEventListener('bookingCartUpdated', handler)
     }, [])
 
-    // Load restaurant + menu
+    // Load initial data (restaurant, menu, hours, tables)
     useEffect(() => {
         if (!restaurantId) return
-        const supabase = createClient()
-
-        const fetchSettings = async () => {
-            const { data: rest } = await supabase
-                .from('restaurants')
-                .select('id,name_kk,name_ru,phone,working_hours,is_booking_enabled,booking_accept_cash,booking_accept_kaspi,booking_accept_freedom,booking_fee,kaspi_link')
-                .eq('id', restaurantId)
-                .single()
-            if (rest) {
-                setRestaurant(rest)
-                // Set default payment method if none selected
-                setPaymentMethod(prev => {
-                    if (prev) return prev
-                    if (rest.booking_accept_kaspi) return 'kaspi'
-                    if (rest.booking_accept_cash) return 'cash'
-                    if (rest.booking_accept_freedom) return 'freedom'
-                    return null
-                })
+        
+        const fetchInitialData = async () => {
+            setLoadingMenu(true)
+            setLoadingTables(true)
+            try {
+                const res = await fetch(`/api/booking/info?restaurantId=${restaurantId}`)
+                const data = await res.json()
+                
+                if (data.restaurant) {
+                    setRestaurant(data.restaurant)
+                    setPaymentMethod(prev => {
+                        if (prev) return prev
+                        if (data.restaurant.booking_accept_kaspi) return 'kaspi'
+                        if (data.restaurant.booking_accept_cash) return 'cash'
+                        if (data.restaurant.booking_accept_freedom) return 'freedom'
+                        return null
+                    })
+                }
+                
+                if (data.menuItems) setMenuItems(data.menuItems)
+                if (data.workingHours) setWorkingHours(data.workingHours)
+                if (data.tables) setTables(data.tables)
+            } catch (error) {
+                console.error("Error loading booking data:", error)
+                toast.error("Мәліметтерді жүктеу қатесі")
+            } finally {
+                setLoadingMenu(false)
+                setLoadingTables(false)
             }
         }
 
-        const fetchMenu = async () => {
-            if (step !== 'menu') return
-            setLoadingMenu(true)
-            const { data: items } = await supabase
-                .from('menu_items')
-                .select('id,name_kk,name_ru,price,image_url,is_available,category_id')
-                .eq('cafe_id', restaurantId)
-                .eq('is_available', true)
-                .order('sort_order')
-            setMenuItems(items || [])
-            setLoadingMenu(false)
-        }
+        fetchInitialData()
+    }, [restaurantId])
 
-        const fetchWorkingHours = async () => {
-            const { data } = await supabase
-                .from('working_hours')
-                .select('*')
-                .eq('cafe_id', restaurantId)
-            if (data) setWorkingHours(data)
-        }
-
-        fetchSettings()
-        fetchMenu()
-        fetchWorkingHours()
-
-        // Real-time updates for restaurant settings
-        const channel = supabase
-            .channel(`restaurant-booking-settings-all-${restaurantId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'restaurants',
-                filter: `id=eq.${restaurantId}`
-            }, fetchSettings)
-            .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
-        }
-    }, [restaurantId, step])
-
-    // Fetch tables
-    useEffect(() => {
-        if (step !== 'tables') return
-        setLoadingTables(true)
-        const supabase = createClient()
-        supabase
-            .from('restaurant_tables')
-            .select('*')
-            .eq('cafe_id', restaurantId)
-            .eq('is_active', true)
-            .then(({ data, error }) => {
-                if (!error && data) {
-                    setTables(data)
-                }
-                setLoadingTables(false)
-            })
-    }, [step, restaurantId])
-
-    // Fetch busy slots
+    // Load busy slots when table/date changes
     useEffect(() => {
         if (!selectedTableId || !selectedDate) return
-        setLoadingSlots(true)
-        const supabase = createClient()
-        supabase
-            .from('reservations')
-            .select('time')
-            .eq('table_id', selectedTableId)
-            .eq('date', selectedDate)
-            .not('status', 'eq', 'cancelled')
-            .then(({ data, error }) => {
-                if (!error && data) {
-                    setBusySlots(data.map(r => r.time))
+        
+        const fetchBusySlots = async () => {
+            setLoadingSlots(true)
+            try {
+                const res = await fetch(`/api/booking/info?restaurantId=${restaurantId}&date=${selectedDate}&tableId=${selectedTableId}`)
+                const data = await res.json()
+                if (data.busySlots) {
+                    setBusySlots(data.busySlots)
                 }
+            } catch (error) {
+                console.error("Error loading busy slots:", error)
+            } finally {
                 setLoadingSlots(false)
-            })
-    }, [selectedTableId, selectedDate])
+            }
+        }
+
+        fetchBusySlots()
+    }, [selectedTableId, selectedDate, restaurantId])
 
     function handleAddToCart(item: MenuItem) {
         addToBookingCart({
@@ -988,31 +944,23 @@ function ReservationStatusView({ reservationId, restaurantId }: { reservationId:
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        const supabase = createClient()
-
         const fetchRes = async () => {
-            const { data } = await supabase
-                .from('reservations')
-                .select('*, restaurants!cafe_id (*)')
-                .eq('id', reservationId)
-                .single()
-            if (data) setReservation(data)
-            setLoading(false)
+            try {
+                const res = await fetch(`/api/reservations/${reservationId}`)
+                const data = await res.json()
+                if (data && !data.error) {
+                    setReservation(data)
+                }
+            } catch (error) {
+                console.error("Error fetching reservation:", error)
+            } finally {
+                setLoading(false)
+            }
         }
 
-        fetchRes()
-
-        const channel = supabase
-            .channel(`reservation-${reservationId}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'reservations', filter: `id=eq.${reservationId}` }, (payload) => {
-                setReservation((prev: any) => ({ ...prev, ...payload.new }))
-                if (payload.new.status === 'confirmed') {
-                    toast.success('Брондауыңыз расталды! 🎉')
-                }
-            })
-            .subscribe()
-
-        return () => { supabase.removeChannel(channel) }
+        if (reservationId) {
+            fetchRes()
+        }
     }, [reservationId])
 
     if (loading || !reservation) {

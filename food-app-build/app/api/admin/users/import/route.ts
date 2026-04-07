@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { verifyAdmin, createAdminResponse, createAdminError } from '@/lib/auth/admin'
 
 export async function POST(req: NextRequest) {
@@ -16,12 +15,7 @@ export async function POST(req: NextRequest) {
             return createAdminError('Invalid clients data', 400)
         }
 
-        const supabase = await createClient()
-
-        // We import into public.clients. 
-        // Note: These users won't be able to log in until they are created in auth.users
-        // but they will exist in the database for management/history.
-
+        const { query } = await import('@/lib/db')
         let successCount = 0
         const errors = []
 
@@ -33,37 +27,35 @@ export async function POST(req: NextRequest) {
                 continue
             }
 
-            // Check if user already exists
-            const { data: existingUser } = await supabase
-                .from('clients')
-                .select('id')
-                .eq('email', email)
-                .single()
+            try {
+                // Check if user already exists
+                const existingRes = await query(
+                    'SELECT id FROM public.users WHERE email = $1',
+                    [email]
+                )
 
-            if (existingUser) {
-                // Update existing user info if needed
-                const { error: updateError } = await supabase
-                    .from('clients')
-                    .update({
-                        full_name: full_name || undefined,
-                        phone: phone || undefined,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('email', email)
-
-                if (!updateError) successCount++
-                else errors.push(`Error updating ${email}: ${updateError.message}`)
-            } else {
-                // Since we don't have a UUID from auth.users (they haven't signed up yet),
-                // we might need a workaround or just skip for now if the schema requires a valid auth.users reference.
-                // Looking at the schema: "id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE"
-
-                // IMPORTANT: In this specific schema, we CANNOT insert into public.clients directly without a corresponding auth.users(id).
-                // So for "Import", we have two options:
-                // 1. Just store them in a temporary table or a new "leads/clients" table.
-                // 2. We can't insert into public.users directly.
-
-                errors.push(`Client ${email} skipped: Users must register via Auth first, or schema needs modification to support placeholder users.`)
+                if (existingRes.rows.length > 0) {
+                    // Update existing user info
+                    await query(
+                        `UPDATE public.users 
+                         SET full_name = COALESCE($1, full_name), 
+                             phone = COALESCE($2, phone),
+                             updated_at = NOW()
+                         WHERE email = $3`,
+                        [full_name || null, phone || null, email]
+                    )
+                    successCount++
+                } else {
+                    // Insert new user
+                    await query(
+                        `INSERT INTO public.users (email, full_name, phone, role) 
+                         VALUES ($1, $2, $3, 'user')`,
+                        [email, full_name || null, phone || null]
+                    )
+                    successCount++
+                }
+            } catch (err: any) {
+                errors.push(`Error processing ${email}: ${err.message}`)
             }
         }
 

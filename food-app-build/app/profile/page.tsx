@@ -1,25 +1,47 @@
-import pb from '@/utils/pocketbase'
+import { query } from '@/lib/db'
 import ProfileClient from './profile-client'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
+import jwt from 'jsonwebtoken'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
 export default async function ProfilePage() {
-    const user = pb.authStore.model
+    const cookieStore = await cookies()
+    const token = cookieStore.get('mazir_auth_token')?.value
+
+    if (!token) {
+        redirect('/login')
+    }
+
+    let userId: string
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any
+        userId = decoded.userId
+    } catch (err) {
+        redirect('/login')
+    }
+
+    // Fetch user profile
+    const userRes = await query('SELECT * FROM users WHERE id = $1', [userId])
+    const user = userRes.rows[0]
 
     if (!user) {
         redirect('/login')
     }
 
     // Check if user is anonymous (guest)
-    if (user.is_anonymous) {
+    if (user.role === 'guest') {
         redirect('/login?next=/profile')
     }
 
-    // In PocketBase, profile is the user record itself
     const profile = user
 
-    const restaurant = await pb.collection('restaurants')
-        .getFirstListItem(`owner_id = "${user.id}"`)
-        .catch(() => null)
+    const restaurantRes = await query(
+        'SELECT * FROM restaurants WHERE owner_id = $1 LIMIT 1',
+        [userId]
+    )
+    const restaurant = restaurantRes.rows[0] || null
 
     return <ProfileClient user={user} profile={profile} restaurant={restaurant} />
 }

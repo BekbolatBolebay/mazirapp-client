@@ -16,14 +16,14 @@ export async function verifyAdmin() {
   try {
     const decoded = verify(token, JWT_SECRET) as any
     
-    if (!decoded || !decoded.userId) {
+    if (!decoded || !decoded.id) {
       return { authorized: false, user: null }
     }
 
     // Verify user role in DB
     const res = await query(
-      "SELECT id, email, full_name, role FROM users WHERE id = $1 AND role IN ('admin', 'super_admin')",
-      [decoded.userId]
+      "SELECT id, email, full_name, role FROM public.users WHERE id = $1 AND role IN ('admin', 'super_admin')",
+      [decoded.id]
     )
     
     const user = res.rows[0]

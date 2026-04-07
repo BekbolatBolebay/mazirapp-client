@@ -1,7 +1,7 @@
 export interface Courier {
     id: string
+    name?: string
     full_name?: string
-    email: string
     phone?: string
     role: string
 }

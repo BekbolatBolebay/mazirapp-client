@@ -1,9 +1,13 @@
 import BottomNav from '@/components/layout/bottom-nav'
 import { SubscriptionGuard } from '@/components/layout/subscription-guard'
 import { getCafeSettings } from '@/lib/db'
+import { getAdminSession } from '@/lib/auth-utils'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const settings = await getCafeSettings()
+  const session = await getAdminSession()
+  const settings = session?.restaurant_id 
+    ? await getCafeSettings(session.restaurant_id)
+    : null
 
   return (
     <div className="min-h-screen bg-background flex justify-center">

@@ -26,8 +26,8 @@ export async function POST(req: Request) {
         if (orderId) {
             const orderRes = await query(
                 `SELECT o.*, r.freedom_merchant_id, r.freedom_payment_secret_key, r.freedom_test_mode, r.delivery_fee
-                 FROM orders o
-                 JOIN restaurants r ON o.cafe_id = r.id
+                 FROM public.orders o
+                 JOIN public.restaurants r ON o.cafe_id = r.id
                  WHERE o.id = $1`,
                 [orderId]
             )
@@ -42,15 +42,15 @@ export async function POST(req: Request) {
             
             // Get order items
             const itemsRes = await query(
-                'SELECT * FROM order_items WHERE order_id = $1',
+                'SELECT * FROM public.order_items WHERE order_id = $1',
                 [orderId]
             )
             restaurant.items = itemsRes.rows
         } else if (reservationId) {
             const resRes = await query(
                 `SELECT rs.*, r.freedom_merchant_id, r.freedom_payment_secret_key, r.freedom_test_mode
-                 FROM reservations rs
-                 JOIN restaurants r ON rs.cafe_id = r.id
+                 FROM public.reservations rs
+                 JOIN public.restaurants r ON rs.cafe_id = r.id
                  WHERE rs.id = $1`,
                 [reservationId]
             )
@@ -167,9 +167,9 @@ export async function POST(req: Request) {
             const redirectUrl = redirectUrlMatch[1]
             // Update payment URL in PostgreSQL
             if (orderId) {
-                await query('UPDATE orders SET payment_url = $1 WHERE id = $2', [redirectUrl, orderId])
+                await query('UPDATE public.orders SET payment_url = $1 WHERE id = $2', [redirectUrl, orderId])
             } else if (reservationId) {
-                await query('UPDATE reservations SET payment_url = $1 WHERE id = $2', [redirectUrl, reservationId])
+                await query('UPDATE public.reservations SET payment_url = $1 WHERE id = $2', [redirectUrl, reservationId])
             }
             return NextResponse.json({ redirectUrl })
         } else {

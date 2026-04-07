@@ -2,17 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { 
-    getRestaurantSettings, 
-    getWorkingHours, 
-    getUserCards, 
-    getTables, 
-    getCheckoutMenu, 
-    getAllReservations, 
-    createReservation, 
-    createOrder, 
-    subscribeToRestaurantSettings 
-} from '@/lib/pocketbase/checkout'
 import { notifyAdmin } from '@/lib/actions'
 import { useLocalCart } from '@/hooks/use-local-cart'
 import { clearLocalCart } from '@/lib/storage/local-storage'
@@ -167,10 +156,17 @@ export function CheckoutClient() {
 
         const fetchCards = async () => {
             setFetchingCards(true)
-            const cards = await getUserCards(authUser.id)
-            setSavedCards(cards)
-            if (cards.length > 0) {
-                setSelectedCardId(cards[0].pg_card_id)
+            try {
+                const res = await fetch('/api/profile/cards')
+                const data = await res.json()
+                if (data && data.cards) {
+                    setSavedCards(data.cards)
+                    if (data.cards.length > 0) {
+                        setSelectedCardId(data.cards[0].pg_card_id)
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching cards:', err)
             }
             setFetchingCards(false)
         }
@@ -210,42 +206,34 @@ export function CheckoutClient() {
         if (!restaurantId) return
 
         const fetchData = async () => {
-            // Settings
-            const settings = await getRestaurantSettings(restaurantId)
-            if (settings) {
-                setRestaurantSettings(settings)
-                if (settings.is_delivery_enabled) setOrderType(prev => prev || 'delivery')
-                else if (settings.is_pickup_enabled) setOrderType(prev => prev || 'pickup')
+            try {
+                const res = await fetch(`/api/checkout/settings?id=${restaurantId}`)
+                const data = await res.json()
+                
+                if (data && !data.error) {
+                    const { settings, workingHours: hours, tables, categories: cats, menuItems: items, reservations } = data
+                    
+                    setRestaurantSettings(settings)
+                    if (settings.is_delivery_enabled) setOrderType(prev => prev || 'delivery')
+                    else if (settings.is_pickup_enabled) setOrderType(prev => prev || 'pickup')
+
+                    setWorkingHours(hours)
+                    setAllTables(tables)
+                    setCategories(cats)
+                    setMenuItems(items)
+                    setAllReservations(reservations)
+                }
+            } catch (err) {
+                console.error('Error fetching checkout settings:', err)
             }
-
-            // Working Hours
-            const hours = await getWorkingHours(restaurantId)
-            setWorkingHours(hours)
-
-            // Tables
-            const tables = await getTables(restaurantId)
-            setAllTables(tables)
-
-            // Menu
-            const { categories: cats, items } = await getCheckoutMenu(restaurantId)
-            setCategories(cats)
-            setMenuItems(items)
-
-            // Reservations
-            const res = await getAllReservations(restaurantId)
-            setAllReservations(res)
         }
 
         fetchData()
 
-        // Real-time updates using PocketBase
-        const unsubscribe = subscribeToRestaurantSettings(restaurantId, (newSettings) => {
-            setRestaurantSettings(newSettings)
-        })
+        // Real-time updates: Polling fallback or implement WebSockets later if needed
+        const interval = setInterval(fetchData, 30000) // 30s poll for settings
 
-        return () => {
-            unsubscribe()
-        }
+        return () => clearInterval(interval)
     }, [restaurantId])
 
     // Filter available tables based on selection
@@ -398,7 +386,14 @@ export function CheckoutClient() {
                     quantity: item.quantity
                 }))
 
-                const reservation = await createReservation(reservationData, reservationItems)
+                const res = await fetch('/api/reservations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...reservationData, items: reservationItems })
+                })
+                const data = await res.json()
+                if (data.error) throw new Error(data.error)
+                const reservation = data.reservation
 
                 // Notify Admin
                 await notifyAdmin(reservation, 'booking', restaurantId || undefined)
@@ -437,7 +432,14 @@ export function CheckoutClient() {
                 price: item.menu_item.price || 0,
             }))
 
-            const order = await createOrder(orderData, orderItems)
+            const res = await fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...orderData, items: orderItems })
+            })
+            const data = await res.json()
+            if (data.error) throw new Error(data.error)
+            const order = data.order
 
             // Notify Admin via Push
             await notifyAdmin(order, 'order', restaurantId || undefined)

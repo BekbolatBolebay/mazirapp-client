@@ -50,49 +50,30 @@ export default function MockCardPage() {
                 const targetId = orderId || reservationId
                 const targetTable = orderId ? 'orders' : 'reservations'
 
-                console.log('Finalizing mock payment for:', { targetTable, targetId })
-
                 if (!targetId) {
                     toast.error('ID is missing')
                     setIsPaying(false)
                     return
                 }
 
-                // Simulating the update Freedom Pay would do via webhook
-                const { createClient } = await import('@/lib/supabase/client')
-                const supabase = createClient()
+                const res = await fetch('/api/payment/mock-finalize', {
+                    method: 'POST',
+                    body: JSON.stringify({ targetTable, targetId }),
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                const data = await res.json()
 
-                const updates: any = {
-                    payment_status: 'paid',
-                    updated_at: new Date().toISOString()
-                }
-
-                if (orderId) {
-                    updates.status = 'preparing'
-                } else {
-                    updates.status = 'confirmed'
-                }
-
-                const { error } = await supabase
-                    .from(targetTable)
-                    .update(updates)
-                    .eq('id', targetId)
-
-                if (error) {
-                    console.error('Update error:', error)
+                if (data.error) {
+                    console.error('Update error:', data.error)
                     toast.error('База мәліметтерін жаңарту қатесі')
                     setIsPaying(false)
                     return
                 }
 
-                // If it's a reservation, we might need to get the cafe_id for redirect
+                // Redirect logic
                 let redirectUrl = orderId ? `/orders/${orderId}?status=success&mock=true` : '/';
-
-                if (reservationId) {
-                    const { data: res } = await supabase.from('reservations').select('cafe_id').eq('id', reservationId).single()
-                    if (res) {
-                        redirectUrl = `/booking/${res.cafe_id}?step=status&reservationId=${reservationId}&status=success&mock=true`
-                    }
+                if (reservationId && data.cafe_id) {
+                    redirectUrl = `/booking/${data.cafe_id}?step=status&reservationId=${reservationId}&status=success&mock=true`
                 }
 
                 toast.success('Төлем сәтті өтті!')

@@ -5,7 +5,6 @@ import { ArrowLeft, Search, User, Phone, MapPin, ClipboardList, Trash2, X, Check
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
 import { t } from '@/lib/i18n'
-import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -15,15 +14,13 @@ export default function ClientsClient({ initialClients }: { initialClients: any[
     const [search, setSearch] = useState('')
     const [selectedClient, setSelectedClient] = useState<any | null>(null)
 
-    const supabase = createClient()
-
     const filtered = clients.filter(c =>
         c.customer_name?.toLowerCase().includes(search.toLowerCase()) ||
         c.customer_phone?.includes(search)
     )
 
-    async function deleteClient(id: string | null) {
-        if (!id) {
+    async function deleteClient(phone: string | null) {
+        if (!phone) {
             toast.error(lang === 'kk' ? 'Бұл клиентті өшіру мүмкін емес (тіркелмеген)' : 'Невозможно удалить этого клиента (не зарегистрирован)')
             return
         }
@@ -31,17 +28,16 @@ export default function ClientsClient({ initialClients }: { initialClients: any[
         if (!confirm(lang === 'kk' ? 'Өшіруді растайсыз ба?' : 'Вы уверены, что хотите удалить?')) return
 
         try {
-            const response = await fetch(`/api/clients/${id}`, {
+            const response = await fetch(`/api/admin/clients?phone=${phone}`, {
                 method: 'DELETE',
             })
 
             if (response.ok) {
-                setClients(prev => prev.filter(c => c.id !== id))
+                setClients(prev => prev.filter(c => c.customer_phone !== phone))
                 setSelectedClient(null)
                 toast.success(lang === 'kk' ? 'Сәтті жойылды' : 'Успешно удалено')
             } else {
-                const errorData = await response.json()
-                toast.error(errorData.error || t(lang, 'error'))
+                toast.error(t(lang, 'error'))
             }
         } catch (err) {
             toast.error(t(lang, 'error'))
@@ -145,7 +141,7 @@ export default function ClientsClient({ initialClients }: { initialClients: any[
                         </div>
 
                         <button
-                            onClick={() => deleteClient(selectedClient.id)}
+                            onClick={() => deleteClient(selectedClient.customer_phone)}
                             className="w-full bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 rounded-2xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
                         >
                             <Trash2 className="w-4 h-4" /> Клиентті жою

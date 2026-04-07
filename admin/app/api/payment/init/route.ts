@@ -13,8 +13,8 @@ export async function POST(req: Request) {
         const { query } = await import('@/lib/db/index')
         const orderRes = await query(
             `SELECT o.*, r.freedom_merchant_id, r.freedom_payment_secret_key 
-             FROM orders o
-             JOIN restaurants r ON o.cafe_id = r.id
+             FROM public.orders o
+             JOIN public.restaurants r ON o.cafe_id = r.id
              WHERE o.id = $1`,
             [orderId]
         )

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import pb from '@/utils/pocketbase'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -16,31 +15,37 @@ export function OrderStatusListener() {
   useEffect(() => {
     if (!user?.id) return
 
-    console.log('[OrderStatusListener] Setting up real-time listener for user:', user.id)
+    console.log('[OrderStatusListener] Setting up polling listener for user:', user.id)
 
-    const unsubscribePromise = pb.collection('orders').subscribe('*', (e) => {
-      if (e.action === 'update' && e.record.user_id === user.id) {
-        const newOrder = e.record
+    const fetchActiveOrders = async () => {
+      try {
+        const res = await fetch('/api/orders/active')
+        const data = await res.json()
         
-        console.log('[OrderStatusListener] Order update received:', {
-          orderId: newOrder.id,
-          orderNumber: newOrder.order_number,
-          newStatus: newOrder.status,
-        })
-
-        // Prevent duplicate notifications
-        const lastStatus = lastStatusRef.current[newOrder.id]
-        if (lastStatus === newOrder.status) return
-        
-        lastStatusRef.current[newOrder.id] = newOrder.status
-        showNotification(newOrder.status, newOrder.order_number, newOrder.id)
+        if (data && data.orders) {
+          data.orders.forEach((order: any) => {
+             const lastStatus = lastStatusRef.current[order.id]
+             if (lastStatus && lastStatus !== order.status) {
+                console.log('[OrderStatusListener] Order update detected via polling:', {
+                  orderId: order.id,
+                  newStatus: order.status,
+                })
+                showNotification(order.status, order.order_number || order.id.slice(0,8), order.id)
+             }
+             lastStatusRef.current[order.id] = order.status
+          })
+        }
+      } catch (error) {
+        console.error('[OrderStatusListener] Polling Error:', error)
       }
-    })
-
-    return () => {
-      unsubscribePromise.then(unsub => unsub())
     }
-  }, [user?.id])
+
+    // Initial fetch to populate lastStatusRef
+    fetchActiveOrders()
+
+    const interval = setInterval(fetchActiveOrders, 10000) // Poll every 10 seconds
+    return () => clearInterval(interval)
+  }, [user?.id, locale])
 
   const showNotification = async (status: string, orderNum: string, orderId: string) => {
     const titles: Record<string, string> = {

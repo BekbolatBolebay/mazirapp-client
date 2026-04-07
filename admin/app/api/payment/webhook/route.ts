@@ -18,8 +18,8 @@ export async function POST(req: Request) {
         const { query } = await import('@/lib/db/index')
         const orderRes = await query(
             `SELECT o.*, r.freedom_payment_secret_key 
-             FROM orders o
-             JOIN restaurants r ON o.cafe_id = r.id
+             FROM public.orders o
+             JOIN public.restaurants r ON o.cafe_id = r.id
              WHERE o.id = $1`,
             [orderId]
         )
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
         if (pgResult === 1) {
             // Success
             await query(
-                `UPDATE orders 
+                `UPDATE public.orders 
                  SET payment_status = $1, status = $2, updated_at = NOW() 
                  WHERE id = $3`,
                 ['paid', 'accepted', orderId]

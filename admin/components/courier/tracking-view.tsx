@@ -1,10 +1,9 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Order } from '@/lib/db'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, Package, MapPin, Phone, Navigation } from 'lucide-react'
+import { Loader2, CheckCircle2, Package, MapPin, Phone, Navigation, Bike } from 'lucide-react'
 import { openIn2GIS } from './courier-utils'
 import { cn } from '@/lib/utils'
 
@@ -20,16 +19,14 @@ export function TrackingView({ token }: TrackingViewProps) {
     useEffect(() => {
         async function fetchOrder() {
             try {
-                const response = await fetch('/api/courier/track-order/details', {
+                const response = await fetch('/api/admin/tracking', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token })
                 })
 
                 if (!response.ok) {
-                    const errorData = await response.json()
-                    console.error('[TrackingView] Details API Error:', response.status, errorData)
-                    throw new Error(errorData.error || 'Тапсырыс табылмады')
+                    throw new Error('Тапсырыс табылмады')
                 }
 
                 const data = await response.json()
@@ -43,6 +40,8 @@ export function TrackingView({ token }: TrackingViewProps) {
         }
 
         fetchOrder()
+        const interval = setInterval(fetchOrder, 30000) // Poll for location updates
+        return () => clearInterval(interval)
     }, [token])
 
     const markAsDelivered = async () => {
@@ -50,24 +49,20 @@ export function TrackingView({ token }: TrackingViewProps) {
         setIsUpdating(true)
 
         try {
-            const response = await fetch('/api/courier/track-order/complete', {
+            const response = await fetch('/api/admin/tracking', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token })
+                body: JSON.stringify({ token, action: 'complete' })
             })
 
             if (!response.ok) {
-                const errData = await response.json()
-                console.error('[TrackingView] Complete API Error:', response.status, errData)
-                const errMsg = errData.details || errData.error || 'Қате орын алды'
-                throw new Error(errMsg)
+                throw new Error('Қате орын алды')
             }
 
             toast.success('Тапсырыс сәтті аяқталды!')
             setOrder({ ...order, status: 'delivered' })
         } catch (error: any) {
-            console.error('[TrackingView] Update error:', error)
-            toast.error(error.details || error.message || 'Қате орын алды')
+            toast.error(error.message || 'Қате орын алды')
         } finally {
             setIsUpdating(false)
         }
@@ -93,14 +88,38 @@ export function TrackingView({ token }: TrackingViewProps) {
         )
     }
 
+    const isFinished = (['completed', 'delivered', 'cancelled'] as string[]).includes(order.status)
+
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
             <div className="bg-primary text-primary-foreground px-6 py-8 rounded-b-[2.5rem] shadow-lg">
-                <h1 className="text-2xl font-black">Тапсырыс #{order.order_number}</h1>
-                <p className="opacity-80 text-sm mt-1">Жеткізу күйі: {(['completed', 'delivered'] as string[]).includes(order.status) ? 'Аяқталды' : order.status}</p>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h1 className="text-2xl font-black">Тапсырыс #{order.order_number || order.id.slice(0, 8)}</h1>
+                        <p className="opacity-80 text-sm mt-1">Жеткізу күйі: {isFinished ? 'Аяқталды' : 'Жолда'}</p>
+                    </div>
+                </div>
             </div>
 
             <div className="px-4 -mt-6 space-y-4">
+                {/* Courier Info */}
+                {(order as any).courier_name && !isFinished && (
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-indigo-100 animate-pulse">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                                <Bike className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Курьер жолда</p>
+                                <p className="font-black text-foreground">{(order as any).courier_name}</p>
+                            </div>
+                            <a href={`tel:${(order as any).courier_phone}`} className="w-10 h-10 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
+                                <Phone className="w-5 h-5" />
+                            </a>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Клиент мәліметі</h3>
                     <div className="space-y-4">
@@ -150,24 +169,24 @@ export function TrackingView({ token }: TrackingViewProps) {
                     </div>
                 </div>
 
-                {['accepted', 'preparing', 'ready', 'on_the_way'].includes(order.status) && (
+                {!isFinished && (
                     <button
                         onClick={markAsDelivered}
                         disabled={isUpdating}
                         className="w-full bg-primary text-primary-foreground rounded-2xl py-4 font-black shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                     >
                         {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
-                        Жеткізілді және Аяқталды
+                        Тапсырысты аяқтау
                     </button>
                 )}
 
-                {(['completed', 'delivered', 'cancelled'] as string[]).includes(order.status) && (
+                {isFinished && (
                     <div className={cn(
-                        "rounded-2xl py-4 px-6 font-bold flex items-center justify-center gap-2",
-                        (order.status as string) === 'cancelled' ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+                        "rounded-2xl py-4 px-6 font-bold flex items-center justify-center gap-2 text-center",
+                        order.status === 'cancelled' ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
                     )}>
                         <CheckCircle2 className="w-6 h-6" />
-                        {(order.status as string) === 'cancelled' ? 'Тапсырыс тоқтатылды' : 'Тапсырыс сәтті жеткізіліп, аяқталды'}
+                        {order.status === 'cancelled' ? 'Тапсырыс тоқтатылды' : 'Жеткізілді'}
                     </div>
                 )}
             </div>

@@ -1,18 +1,20 @@
-import { getCafeSettings } from '@/lib/cafe-db'
+export const dynamic = 'force-dynamic'
+import { getCafeSettings, getCurrentRestaurantId } from '@/lib/cafe-db'
+import { verifyAdmin } from '@/lib/auth/admin'
+import { redirect } from 'next/navigation'
 import { ArrowLeft, LayoutGrid, UtensilsCrossed, Settings, LogOut, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 
 export default async function ManagePage() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) redirect('/login')
+    const { authorized, user } = await verifyAdmin()
+    if (!authorized || !user) redirect('/login')
 
-    const cafe = await getCafeSettings()
+    const rid = await getCurrentRestaurantId(user.id)
+    const cafe = rid ? await getCafeSettings(rid) : null
+
     if (!cafe) {
         return (
-            <div className="p-8 text-center">
+            <div className="p-8 text-center min-h-screen flex flex-col items-center justify-center">
                 <h1 className="text-xl font-bold mb-4">Restaurant not found</h1>
                 <p className="text-muted-foreground mb-6">You don't have a restaurant associated with your account.</p>
                 <Link href="/" className="text-primary hover:underline flex items-center justify-center gap-2">
@@ -24,8 +26,6 @@ export default async function ManagePage() {
 
     const menuItems = [
         { title: 'Menu Management', icon: UtensilsCrossed, href: '/manage/menu', desc: 'Add, edit and manage dishes' },
-        // { title: 'Orders', icon: ShoppingBag, href: '/manage/orders', desc: 'View and manage active orders' },
-        // { title: 'Cafe Settings', icon: Settings, href: '/manage/settings', desc: 'Update business info' },
     ]
 
     return (
@@ -41,7 +41,7 @@ export default async function ManagePage() {
                         )}
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">{cafe.name_ru || cafe.name_kk}</h1>
+                        <h1 className="text-2xl font-bold text-foreground">{cafe.name_ru || cafe.name_kk || 'Cafe'}</h1>
                         <p className="text-sm text-muted-foreground">{cafe.address}</p>
                     </div>
                 </div>
@@ -57,7 +57,7 @@ export default async function ManagePage() {
                     <div className="bg-secondary/50 rounded-2xl p-4 border border-border/50">
                         <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Rating</p>
                         <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-sm">{cafe.rating.toFixed(1)}</span>
+                            <span className="font-bold text-sm">{(cafe.rating || 0).toFixed(1)}</span>
                             <span className="text-[10px] text-muted-foreground">/ 5.0</span>
                         </div>
                     </div>

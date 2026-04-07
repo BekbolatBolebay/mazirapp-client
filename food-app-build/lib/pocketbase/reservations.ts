@@ -1,12 +1,14 @@
+'use server'
+
 import { query } from '@/lib/db';
 
 export async function getReservationDetails(id: string) {
     try {
         const res = await query(
             `SELECT r.*, res.name_kk as cafe_name, res.image_url as cafe_image, t.table_number
-             FROM reservations r
-             LEFT JOIN restaurants res ON r.cafe_id = res.id
-             LEFT JOIN restaurant_tables t ON r.table_id = t.id
+             FROM public.reservations r
+             LEFT JOIN public.restaurants res ON r.cafe_id = res.id
+             LEFT JOIN public.restaurant_tables t ON r.table_id = t.id
              WHERE r.id = $1`,
             [id]
         );
@@ -42,14 +44,14 @@ export async function getReservationDetails(id: string) {
 
 export async function getReservationReview(reservationId: string) {
     try {
-        const res = await query('SELECT * FROM reviews WHERE reservation_id = $1', [reservationId]);
+        const res = await query('SELECT * FROM public.reviews WHERE reservation_id = $1', [reservationId]);
         return res.rows[0] || null;
     } catch (error) {
         return null;
     }
 }
 
-export function subscribeToReservation(id: string, callback: (data: any) => void) {
+export async function subscribeToReservation(id: string, callback: (data: any) => void) {
     console.warn('subscribeToReservation: Real-time not yet implemented for SQL backend');
     return () => {};
 }

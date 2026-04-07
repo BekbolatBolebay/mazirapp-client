@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
-import pb from '@/utils/pocketbase'
+import { query } from '@/lib/db'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import { cookies } from 'next/headers'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
 export async function POST(request: Request) {
     try {
@@ -17,70 +22,73 @@ export async function POST(request: Request) {
             selectedDays
         } = body
 
-        // 1. Create User via PocketBase
-        // Note: PocketBase 'users' collection usually has 'email', 'password', 'passwordConfirm', 'name'
-        const userData = await pb.collection('users').create({
-            email,
-            password,
-            passwordConfirm: password,
-            name: cafeName,
-        })
+        // 1. Hash password
+        const hashedPassword = await bcrypt.hash(password, 10)
 
-        const userId = userData.id
+        // 2. Create User via SQL
+        const userRes = await query(
+            'INSERT INTO public.users (email, password, name, role) VALUES ($1, $2, $3, $4) RETURNING id',
+            [email, hashedPassword, cafeName, 'admin']
+        )
+        const userId = userRes.rows[0].id
 
-        // 1b. Create Staff Profile
-        try {
-            await pb.collection('staff_profiles').create({
-                id: userId, // PocketBase user IDs are usually the same if you specify them or just use the created ID
-                // If the IDs are different, we should link them. Assuming we use userId as the record ID or link it.
-                // If it's a separate collection, we can just use userId as the ID if we want parity with Supabase.
-                email: email,
-                full_name: cafeName,
-                role: 'admin'
-            })
-        } catch (profileError) {
-            console.error('Registration Error (Profile):', profileError)
+        // 3. Create Restaurant
+        const cafeRes = await query(
+            `INSERT INTO public.restaurants (
+                name_kk, name_ru, name_en, address, phone, owner_id, 
+                status, is_open, latitude, longitude
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+            [cafeName, cafeName, cafeName, address, whatsapp, userId, 'open', true, latitude, longitude]
+        )
+        const cafeId = cafeRes.rows[0].id
+
+        // 4. Create Default Working Hours
+        const days = [0, 1, 2, 3, 4, 5, 6]
+        for (const day of days) {
+            await query(
+                `INSERT INTO public.working_hours (cafe_id, day_of_week, open_time, close_time, is_day_off) 
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [cafeId, day, openTime, closeTime, !selectedDays.includes(day)]
+            )
         }
 
-        // 2. Create Restaurant
-        const cafeData = await pb.collection('restaurants').create({
-            name_kk: cafeName,
-            name_ru: cafeName,
-            name_en: cafeName,
-            address: address,
-            phone: whatsapp,
-            owner_id: userId,
-            status: 'open',
-            is_open: true,
-            city: 'Алматы',
-            latitude: latitude,
-            longitude: longitude,
+        // 5. Create JWT for auto-login
+        const token = jwt.sign(
+            { 
+                id: userId,
+                userId, 
+                email, 
+                role: 'admin',
+                name: cafeName,
+                restaurant_id: cafeId
+            },
+            JWT_SECRET,
+            { expiresIn: '30d' }
+        )
+
+        // 6. Set Cookie
+        const cookieStore = await cookies()
+        cookieStore.set('mazir_auth_token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 30 * 24 * 60 * 60, // 30 days
+            path: '/',
         })
-
-        if (!cafeData) {
-            throw new Error('Failed to create restaurant record')
-        }
-
-        // 3. Create Default Working Hours
-        const workingHoursPromises = [0, 1, 2, 3, 4, 5, 6].map((day) => {
-            return pb.collection('working_hours').create({
-                cafe_id: cafeData.id,
-                day_of_week: day,
-                open_time: openTime,
-                close_time: closeTime,
-                is_day_off: !selectedDays.includes(day),
-            })
-        })
-
-        await Promise.all(workingHoursPromises)
 
         return NextResponse.json({
             success: true,
-            message: 'Registration successful'
+            message: 'Registration successful',
+            user: {
+                id: userId,
+                email,
+                name: cafeName,
+                role: 'admin'
+            }
         })
 
     } catch (error: any) {
-        console.error('API Error:', error)
+        console.error('Registration API Error:', error)
         return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
     }
 }

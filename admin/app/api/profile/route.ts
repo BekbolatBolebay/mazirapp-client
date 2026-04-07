@@ -1,55 +1,79 @@
-import pb from '@/utils/pocketbase'
 import { NextResponse } from 'next/server'
+import { query } from '@/lib/db'
+import { cookies } from 'next/headers'
+import jwt from 'jsonwebtoken'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
 export async function GET() {
     try {
-        const user = pb.authStore.model
+        const cookieStore = await cookies()
+        const token = cookieStore.get('mazir_auth_token')?.value
 
-        if (!user) {
+        if (!token) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const record = await pb.collection('staff_profiles').getOne(user.id)
-        return NextResponse.json({ profile: record })
+        const decoded = jwt.verify(token, JWT_SECRET) as any
+        const userId = decoded.id || decoded.userId // Fallback for transition
+
+        const res = await query(`
+            SELECT u.*, 
+                   json_build_object('id', r.id, 'name_kk', r.name_kk, 'name_ru', r.name_ru) as restaurant
+            FROM public.users u
+            LEFT JOIN public.restaurants r ON r.owner_id = u.id
+            WHERE u.id = $1
+        `, [userId])
+
+        if (res.rows.length === 0) {
+            return NextResponse.json({ error: 'User not found' }, { status: 404 })
+        }
+
+        return NextResponse.json({ profile: res.rows[0] })
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        console.error('Profile GET Error:', error)
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
     }
 }
 
 export async function PUT(request: Request) {
     try {
-        const user = pb.authStore.model
+        const cookieStore = await cookies()
+        const token = cookieStore.get('mazir_auth_token')?.value
 
-        if (!user) {
+        if (!token) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const { full_name, phone } = await request.json()
+        const decoded = jwt.verify(token, JWT_SECRET) as any
+        const userId = decoded.id || decoded.userId
 
-        if (!full_name || !phone) {
-            return NextResponse.json({ error: 'Full name and phone are required' }, { status: 400 })
+        const body = await request.json()
+        const { full_name, phone, push_subscription } = body
+
+        let res;
+        if (push_subscription !== undefined) {
+            res = await query(
+                'UPDATE public.users SET push_subscription = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+                [push_subscription, userId]
+            )
+        } else {
+            if (!full_name || !phone) {
+                return NextResponse.json({ error: 'Full name and phone are required' }, { status: 400 })
+            }
+            res = await query(
+                'UPDATE public.users SET name = $1, phone = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+                [full_name, phone, userId]
+            )
         }
 
-        // 1. Update staff_profiles collection in PocketBase
-        await pb.collection('staff_profiles').update(user.id, {
-            full_name,
-            phone,
-        })
-
-        // 2. Sync with auth metadata if needed
-        // In PocketBase, the 'users' collection often holds this info directly.
-        // If staff_profiles is separate, we might also want to update the 'users' collection.
-        try {
-            await pb.collection('users').update(user.id, {
-                name: full_name,
-            })
-        } catch (authError) {
-            console.error('Error syncing auth metadata in PocketBase:', authError)
+        if (res.rows.length === 0) {
+            return NextResponse.json({ error: 'User not found' }, { status: 404 })
         }
 
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, profile: res.rows[0] })
     } catch (error: any) {
-        console.error('Profile update error:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        console.error('Profile PUT Error:', error)
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
     }
 }

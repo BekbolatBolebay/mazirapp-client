@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useI18n } from '@/lib/i18n/i18n-context'
@@ -13,31 +14,14 @@ interface Category {
   icon_url?: string
 }
 
-import pb from '@/utils/pocketbase'
-import { useEffect, useState } from 'react'
-
 export function CategoryGrid({ initialCategories }: { initialCategories: any[] }) {
   const { t, locale } = useI18n()
   const [categories, setCategories] = useState(initialCategories)
 
   useEffect(() => {
-    // Real-time subscription for category changes
-    pb.collection('categories').subscribe('*', async () => {
-      try {
-        const data = await pb.collection('categories').getFullList({
-          filter: 'home_visible = true',
-          sort: 'home_sort_order'
-        })
-        setCategories(data)
-      } catch (e) {
-        console.error('Real-time Category Update Error:', e)
-      }
-    })
-
-    return () => {
-      pb.collection('categories').unsubscribe('*')
-    }
-  }, [])
+    // Sync if initialCategories changes
+    setCategories(initialCategories)
+  }, [initialCategories])
 
   return (
     <section className="space-y-4">

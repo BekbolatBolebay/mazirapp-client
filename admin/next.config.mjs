@@ -23,8 +23,14 @@ const nextConfig = {
   },
   outputFileTracingRoot: __dirname,
   experimental: {
-    // This helps Next.js find the correct root in CI environments like Vercel
-    // specifically when multiple lockfiles or parent directories are present.
+    serverActions: {
+      allowedOrigins: [
+        'secure-cafes-idishere.mazirapp.kz', 
+        'secure-cafes-idishere.mazirapp.kz.', 
+        'mazirapp.kz',
+        'mazirapp.kz.'
+      ]
+    }
   },
   // This silences the "Turbopack with Webpack config" error in Next.js 15/16
   turbopack: {},

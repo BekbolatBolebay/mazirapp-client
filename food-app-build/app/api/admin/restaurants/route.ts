@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   }
 
   const res = await query(
-    'SELECT * FROM restaurants ORDER BY created_at DESC'
+    'SELECT * FROM public.restaurants ORDER BY created_at DESC'
   )
 
   return createAdminResponse({ restaurants: res.rows })
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     
     const res = await query(
-      `INSERT INTO restaurants (
+      `INSERT INTO public.restaurants (
         name_kk, name_ru, name_en, 
         description_kk, description_ru, description_en,
         address, phone, image_url, banner_url,
@@ -89,7 +89,7 @@ export async function PUT(req: NextRequest) {
     const values = [id, ...Object.values(updates)]
 
     const res = await query(
-      `UPDATE restaurants SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      `UPDATE public.restaurants SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
       values
     )
 
@@ -118,7 +118,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   const res = await query(
-    'DELETE FROM restaurants WHERE id = $1',
+    'DELETE FROM public.restaurants WHERE id = $1',
     [id]
   )
 

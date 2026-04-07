@@ -1,16 +1,22 @@
-import { getPromoCodes, getBanners } from '@/lib/db'
+import { getPromotions, getBanners } from '@/lib/db'
+import { getAdminSession } from '@/lib/auth-utils'
+import { redirect } from 'next/navigation'
 import MarketingClient from './marketing-client'
 
 export default async function MarketingPage() {
-  const [promoCodes, banners] = await Promise.all([
-    getPromoCodes(),
-    getBanners(),
-  ])
+    const session = await getAdminSession()
+    if (!session?.restaurant_id) redirect('/login')
+    const restaurantId = session.restaurant_id
 
-  return (
-    <MarketingClient
-      initialPromoCodes={promoCodes}
-      initialBanners={banners}
-    />
-  )
+    const [promotions, banners] = await Promise.all([
+        getPromotions(restaurantId),
+        getBanners(restaurantId),
+    ])
+
+    return (
+        <MarketingClient
+            initialPromoCodes={promotions}
+            initialBanners={banners}
+        />
+    )
 }

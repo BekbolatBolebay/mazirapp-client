@@ -5,7 +5,6 @@ import { Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import pb from '@/utils/pocketbase'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -42,25 +41,22 @@ export function OrderRating({
 
         setIsSubmitting(true)
         try {
-            console.log('[OrderRating] Submitting review:', { 
-                orderId, 
-                reservationId,
-                restaurantId, 
-                customerName, 
-                rating, 
-                commentLength: comment.length 
+            const res = await fetch('/api/reviews', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cafe_id: restaurantId,
+                    customer_name: customerName,
+                    rating,
+                    comment,
+                    order_id: orderId || null,
+                    reservation_id: reservationId || null,
+                })
             })
 
-            const record = await pb.collection('reviews').create({
-                cafe_id: restaurantId,
-                customer_name: customerName,
-                rating,
-                comment,
-                order_id: orderId || null,
-                reservation_id: reservationId || null,
-            });
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to submit review')
 
-            console.log('[OrderRating] Review submitted successfully:', record)
             setSubmitted(true)
             toast.success(t.orders.reviewThanksToast)
         } catch (error: any) {

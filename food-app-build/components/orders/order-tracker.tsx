@@ -11,7 +11,6 @@ import {
     Flame,
     Loader2
 } from 'lucide-react'
-import pb from '@/utils/pocketbase'
 import { useI18n } from '@/lib/i18n/i18n-context'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -50,35 +49,42 @@ export function OrderTracker({ orderId, initialStatus, initialUpdatedAt, initial
     }, [])
 
     useEffect(() => {
-        // Real-time updates using PocketBase
-        const unsubscribePromise = pb.collection('orders').subscribe(orderId, (e) => {
-            if (e.action === 'update') {
-                const record = e.record
-                const newStatus = record.status
+        if (!orderId) return
+
+        const fetchStatus = async () => {
+            try {
+                const res = await fetch(`/api/orders/${orderId}`)
+                const data = await res.json()
                 
-                if (newStatus !== status || record.estimated_ready_at !== estimatedReadyAt || record.delivery_fee !== deliveryFee) {
-                    setStatus(newStatus)
-                    setUpdatedAt(record.updated)
-                    setEstimatedReadyAt(record.estimated_ready_at)
-                    setDeliveryFee(record.delivery_fee)
-                    setTotalAmount(record.total_amount)
+                if (data && !data.error) {
+                    const newStatus = data.status
+                    
+                    if (newStatus !== status || data.estimated_ready_at !== estimatedReadyAt || data.delivery_fee !== deliveryFee) {
+                        setStatus(newStatus)
+                        setUpdatedAt(data.updated_at || data.updated)
+                        setEstimatedReadyAt(data.estimated_ready_at)
+                        setDeliveryFee(data.delivery_fee)
+                        setTotalAmount(data.total_amount)
 
-                    if (newStatus !== status) {
-                        const translatedStatus = (t.orders.status as any)[newStatus] || newStatus
-                        toast.info(`${t.orders.statusChangedToast}${translatedStatus}`)
-                    }
-
-                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                        navigator.vibrate([200, 100, 200])
+                        if (newStatus !== status && status) { // Only toast on actual change
+                            const translatedStatus = (t.orders.status as any)[newStatus] || newStatus
+                            toast.info(`${t.orders.statusChangedToast}${translatedStatus}`)
+                            
+                            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                                navigator.vibrate([200, 100, 200])
+                            }
+                        }
                     }
                 }
+            } catch (error) {
+                console.error('Order Status Update Error:', error)
             }
-        })
-
-        return () => {
-            unsubscribePromise.then(unsub => unsub())
         }
-    }, [orderId, status, t])
+
+        // Poll every 5 seconds
+        const interval = setInterval(fetchStatus, 5000)
+        return () => clearInterval(interval)
+    }, [orderId, status, estimatedReadyAt, deliveryFee, t])
 
     const normalizedStatus = (status || '').toLowerCase().trim()
 
@@ -129,10 +135,14 @@ export function OrderTracker({ orderId, initialStatus, initialUpdatedAt, initial
     const handleApproveQuote = async () => {
         setIsUpdating(true)
         try {
-            await pb.collection('orders').update(orderId, {
-                status: 'awaiting_payment',
-                updated_at: new Date().toISOString()
+            const res = await fetch(`/api/orders/${orderId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'awaiting_payment' })
             })
+            
+            if (!res.ok) throw new Error('Update failed')
+            
             toast.success(locale === 'ru' ? 'Принято!' : 'Қабылданды!')
             setStatus('awaiting_payment')
         } catch (error) {

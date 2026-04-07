@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -34,11 +34,22 @@ export const getFcmToken = async () => {
 };
 
 export const onMessageListener = () =>
-  new Promise((resolve) => {
-    const messaging = getMessaging(app);
-    onMessage(messaging, (payload) => {
-      resolve(payload);
-    });
+  new Promise(async (resolve, reject) => {
+    try {
+      const isSupportedBrowser = await isSupported();
+      if (!isSupportedBrowser) {
+        console.warn('[Firebase] Messaging not supported in this browser');
+        return;
+      }
+      const messaging = getMessaging(app);
+      onMessage(messaging, (payload) => {
+        resolve(payload);
+      });
+    } catch (err) {
+      console.error('[Firebase] Error in onMessageListener:', err);
+      // Don't reject the whole promise to avoid crashing callers, 
+      // just let it hang or resolve as empty if that's preferred.
+    }
   });
 
 export { app };

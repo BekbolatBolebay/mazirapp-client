@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import pb from '@/utils/pocketbase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
@@ -52,7 +51,7 @@ export default function RegisterPage() {
             const res = await fetch('/api/auth/send-otp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, lang }),
+                body: JSON.stringify({ email, lang, isRegistration: true }),
             })
             const data = await res.json()
             if (data.success) {
@@ -102,17 +101,9 @@ export default function RegisterPage() {
                 throw new Error(data.error || 'Registration failed')
             }
 
-            // After successful server-side registration, sign in on the client side
-            const authData = await pb.collection('users').authWithPassword(email, password)
-
-            if (authData) {
-                // Sync with cookies for middleware/SSR
-                document.cookie = pb.authStore.exportToCookie({ httpOnly: false })
-            }
-
             toast.success(t(lang, 'registerSuccess'))
             
-            // Redirect to home
+            // Redirect to home (session is handled by API cookie)
             setTimeout(() => {
                 window.location.href = '/'
             }, 1000)
@@ -407,12 +398,11 @@ export default function RegisterPage() {
             <MapPicker
                 open={mapOpen}
                 onOpenChange={setMapOpen}
-                onSelect={(lat, lng, addr) => {
+                onSelect={(lat: number, lng: number, addr?: string) => {
                     setLatitude(lat)
                     setLongitude(lng)
                     if (addr) setAddress(addr)
                 }}
-                lang={lang}
             />
         </div>
     )

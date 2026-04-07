@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import pb from '@/utils/pocketbase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useApp } from '@/lib/app-context'
@@ -22,19 +21,24 @@ export default function LoginPage() {
         setLoading(true)
 
         try {
-            const authData = await pb.collection('users').authWithPassword(email, password)
-            
-            if (authData) {
-                // Sync with cookies for middleware/SSR
-                document.cookie = pb.authStore.exportToCookie({ httpOnly: false })
-                
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            })
+
+            if (res.ok) {
                 toast.success(t(lang, 'welcome'))
                 router.push('/')
                 router.refresh()
+            } else {
+                const errorData = await res.json()
+                toast.error(errorData.error || t(lang, 'invalidData'))
+                setLoading(false)
             }
         } catch (error: any) {
             console.error('Login Error:', error)
-            toast.error(t(lang, 'invalidData'))
+            toast.error(t(lang, 'error'))
             setLoading(false)
         }
     }

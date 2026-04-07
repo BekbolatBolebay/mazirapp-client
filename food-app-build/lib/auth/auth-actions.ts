@@ -98,19 +98,30 @@ export async function verifyCustomOtp(email: string, code: string) {
     const otpData = res.rows[0]
 
     // 2. Find or create user
-    let userRes = await query('SELECT * FROM users WHERE email = $1', [email])
+    let userRes = await query('SELECT * FROM public.users WHERE email = $1', [email])
     let user = userRes.rows[0]
 
     if (!user) {
         const newUserRes = await query(
-            'INSERT INTO users (id, email, full_name, phone, role) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            'INSERT INTO public.users (id, email, full_name, phone, role) VALUES ($1, $2, $3, $4, $5) RETURNING *',
             [uuidv4(), email, otpData.full_name, otpData.phone, 'user']
         )
         user = newUserRes.rows[0]
     }
 
     // 3. Create Session (JWT)
-    const token = sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' })
+    const token = sign(
+        { 
+            id: user.id, 
+            userId: user.id, 
+            email: user.email, 
+            role: user.role,
+            full_name: user.full_name,
+            phone: user.phone
+        }, 
+        JWT_SECRET, 
+        { expiresIn: '7d' }
+    )
 
     const cookieStore = await cookies()
     cookieStore.set('mazir_auth_token', token, {

@@ -8,12 +8,15 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE,
+    password TEXT, -- Added for admin login
+    name TEXT, -- Added for display name
     phone TEXT UNIQUE,
     full_name TEXT,
     avatar_url TEXT,
     role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin', 'super_admin')),
     is_anonymous BOOLEAN DEFAULT FALSE,
     push_subscription JSONB,
+    fcm_token TEXT,
     preferred_language TEXT DEFAULT 'kk',
     theme TEXT DEFAULT 'light',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -39,6 +42,8 @@ CREATE TABLE IF NOT EXISTS public.restaurants (
     delivery_time_max INTEGER DEFAULT 40,
     delivery_fee NUMERIC DEFAULT 0,
     minimum_order NUMERIC DEFAULT 0,
+    latitude NUMERIC, -- Added
+    longitude NUMERIC, -- Added
     is_open BOOLEAN DEFAULT TRUE,
     status TEXT DEFAULT 'open',
     opening_hours JSONB,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import pb from '@/utils/pocketbase'
+import { query } from '@/lib/db'
 import webpush from 'web-push'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
@@ -40,11 +40,12 @@ export async function POST(req: Request) {
         const customerId = record.user_id || record.customer_id
         if (!customerId) return NextResponse.json({ error: 'Customer ID not found' }, { status: 400 })
 
-        // Fetch customer from PocketBase (trying users collection first)
-        const customer = await pb.collection('users').getOne(customerId).catch(() => null)
-        if (!customer) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
-
-        const lang = (customer.language || customer.preferred_language) === 'kk' ? 'kk' : 'ru'
+        // Fetch customer from SQL
+        const userRes = await query('SELECT * FROM public.users WHERE id = $1', [customerId])
+        if (userRes.rows.length === 0) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+        
+        const customer = userRes.rows[0]
+        const lang = (customer.preferred_language) === 'kk' ? 'kk' : 'ru'
         const statusMessage = statusMap[record.status]?.[lang] || `Status: ${record.status}`
 
         const payload = {

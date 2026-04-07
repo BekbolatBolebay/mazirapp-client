@@ -192,7 +192,7 @@ export const translations = {
     selectOnMap: 'Картадан таңдау',
     addressPicked: 'Мекен-жай таңдалды',
     selectLocation: 'Орынды таңдау',
-    confirmLocation: 'Орынды растау',
+    confirmLocation: 'Орынды таңдау',
     detectLocation: 'Орынды анықтау',
   },
   ru: {

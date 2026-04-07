@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import dynamic from 'next/dynamic'
-import { createClient } from '@/lib/supabase/client'
+
 import ImageUpload from '@/components/ui/image-upload'
 
 const MapPicker = dynamic(() => import('@/components/restaurant/map-picker').then(mod => mod.MapPicker), {
@@ -80,7 +80,7 @@ export default function ProfileClient({ settings, workingHours, userProfile }: P
   // Local state for working hours
   // Ensure we have all 7 days represented
   const [localHours, setLocalHours] = useState<Partial<WorkingHour>[]>(() => {
-    const hours = [...workingHours]
+    const hours = Array.isArray(workingHours) ? [...workingHours] : []
     const fullWeek: Partial<WorkingHour>[] = []
     
     for (let i = 0; i < 7; i++) {
@@ -300,20 +300,14 @@ export default function ProfileClient({ settings, workingHours, userProfile }: P
         applicationServerKey: vapidKey
       })
 
-      // Step 5: Save to DB
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      if (subscription) {
+        const res = await fetch('/api/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ push_subscription: subscription })
+        })
 
-      if (user) {
-        const { error } = await supabase
-          .from('staff_profiles')
-          .update({ 
-            push_subscription: subscription,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', user.id)
-
-        if (error) throw error
+        if (!res.ok) throw new Error('Failed to save subscription')
         toast.success(lang === 'kk' ? 'Хабарламалар сәтті қосылды' : 'Уведомления успешно включены')
       }
     } catch (error: any) {
@@ -324,9 +318,7 @@ export default function ProfileClient({ settings, workingHours, userProfile }: P
 
   const sendTestNotification = async () => {
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      if (!userProfile?.id) throw new Error('Not authenticated')
 
       const res = await fetch('/api/notifications/send', {
         method: 'POST',
@@ -523,7 +515,7 @@ export default function ProfileClient({ settings, workingHours, userProfile }: P
                   <MapPin className="w-4 h-4" />
                 </button>
               </div>
-              {coords && (
+              {coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && (
                 <p className="text-[10px] text-muted-foreground italic">
                   Координаты: {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
                 </p>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import pb from '@/utils/pocketbase'
+import { query } from '@/lib/db'
 import { validateFreedomSignature } from '@/utils/payment-helpers'
 
 export async function POST(req: Request) {
@@ -16,31 +16,27 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Order ID missing' }, { status: 400 })
         }
 
-        // 1. Get restaurant credentials to validate signature via PocketBase
-        let targetCollection: 'orders' | 'reservations' = 'orders'
-        let entity: any = null
+        // 1. Get restaurant credentials and entity data via SQL
+        // We check orders table, then reservations table if name not found
+        const orderRes = await query(`
+            SELECT 'orders' as type, o.id, o.total_amount, o.user_id, r.freedom_payment_secret_key, r.freedom_merchant_id
+            FROM public.orders o
+            JOIN public.restaurants r ON o.cafe_id = r.id
+            WHERE o.id = $1
+            UNION ALL
+            SELECT 'reservations' as type, res.id, res.booking_fee as total_amount, res.user_id, r.freedom_payment_secret_key, r.freedom_merchant_id
+            FROM public.reservations res
+            JOIN public.restaurants r ON res.cafe_id = r.id
+            WHERE res.id = $1
+        `, [orderId])
 
-        // Try orders first
-        try {
-            entity = await pb.collection('orders').getOne(orderId, {
-                expand: 'cafe_id'
-            })
-            targetCollection = 'orders'
-        } catch (e) {
-            // Try reservations if order not found
-            try {
-                entity = await pb.collection('reservations').getOne(orderId, {
-                    expand: 'cafe_id'
-                })
-                targetCollection = 'reservations'
-            } catch (e2) {
-                console.error('Payment Webhook - Entity not found for ID:', orderId)
-                return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
-            }
+        if (orderRes.rows.length === 0) {
+            console.error('Payment Webhook - Entity not found for ID:', orderId)
+            return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
         }
 
-        const restaurant = entity.expand?.cafe_id
-        const secretKey = restaurant?.freedom_payment_secret_key || restaurant?.freedom_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
+        const entity = orderRes.rows[0]
+        const secretKey = entity.freedom_payment_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
         
         if (!secretKey) {
             console.error('Payment Webhook - Merchant secret not found for entity:', orderId)
@@ -48,7 +44,6 @@ export async function POST(req: Request) {
         }
 
         // 2. Validate signature
-        // Note: 'webhook' is used as the script name for signature validation here
         const isValid = validateFreedomSignature('webhook', params, secretKey)
 
         if (!isValid) {
@@ -68,45 +63,46 @@ export async function POST(req: Request) {
         // 4. Update status based on pg_result
         const isPaid = params.pg_result === '1'
         const paymentStatus = isPaid ? 'paid' : 'failed'
+        const targetStatus = isPaid ? (entity.type === 'orders' ? 'preparing' : 'confirmed') : 'pending'
 
-        const updates: any = {
-            payment_status: paymentStatus,
-            updated_at: new Date().toISOString()
+        if (entity.type === 'orders') {
+            await query(
+                'UPDATE public.orders SET payment_status = $1, status = $2, updated_at = NOW() WHERE id = $3',
+                [paymentStatus, targetStatus, orderId]
+            )
+        } else {
+            await query(
+                'UPDATE public.reservations SET payment_status = $1, status = $2, updated_at = NOW() WHERE id = $3',
+                [paymentStatus, targetStatus, orderId]
+            )
         }
 
-        if (isPaid) {
-            updates.status = (targetCollection === 'orders') ? 'preparing' : 'confirmed'
-        }
-
-        await pb.collection(targetCollection).update(orderId, updates)
-
-        // 5. Handle Card Storage
+        // 5. Handle Card Storage (Upsert)
         const cardId = params.pg_card_id
-        const userId = params.pg_user_id
+        const userId = entity.user_id || params.pg_user_id
 
         if (isPaid && cardId && userId) {
             console.log('Payment Webhook - Saving card for user:', userId)
             try {
-                await pb.collection('user_cards').create({
-                    user_id: userId,
-                    pg_card_id: cardId,
-                    pg_card_hash: params.pg_card_hash || '****',
-                    pg_card_month: params.pg_card_month,
-                    pg_card_year: params.pg_card_year,
-                    bank_name: params.pg_bank,
-                })
+                await query(`
+                    INSERT INTO user_cards (user_id, pg_card_id, pg_card_hash, pg_card_month, pg_card_year, bank_name, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                    ON CONFLICT (user_id, pg_card_id) DO UPDATE SET
+                    pg_card_hash = EXCLUDED.pg_card_hash,
+                    pg_card_month = EXCLUDED.pg_card_month,
+                    pg_card_year = EXCLUDED.pg_card_year,
+                    bank_name = EXCLUDED.bank_name,
+                    updated_at = NOW()
+                `, [
+                    userId,
+                    cardId,
+                    params.pg_card_hash || '****',
+                    params.pg_card_month,
+                    params.pg_card_year,
+                    params.pg_bank
+                ])
             } catch (err) {
-                // If create fails (maybe unique constraint), try update
-                console.log('Card might already exist, attempting update...')
-                const existing = await pb.collection('user_cards').getFirstListItem(`user_id="${userId}" && pg_card_id="${cardId}"`).catch(() => null)
-                if (existing) {
-                    await pb.collection('user_cards').update(existing.id, {
-                        pg_card_hash: params.pg_card_hash || '****',
-                        pg_card_month: params.pg_card_month,
-                        pg_card_year: params.pg_card_year,
-                        bank_name: params.pg_bank,
-                    })
-                }
+                console.error('Card Storage Error:', err)
             }
         }
 

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import { verifyAdmin, createAdminResponse, createAdminError } from '@/lib/auth/admin'
 
 // GET dashboard statistics
@@ -10,83 +10,52 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const supabase = await createClient()
-
-    // Get total orders count
-    const { count: totalOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-
-    // Get active orders count
-    const { count: activeOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'preparing', 'on_the_way'])
-
-    // Get total revenue
-    const { data: revenueData } = await supabase
-      .from('orders')
-      .select('total_amount')
-      .eq('status', 'delivered')
-
-    const totalRevenue = revenueData?.reduce((sum, order) => sum + order.total_amount, 0) || 0
-
-    // Get total clients
-    const { count: totalClients } = await supabase
-      .from('clients')
-      .select('*', { count: 'exact', head: true })
-
-    // Get total staff
-    const { count: totalStaff } = await supabase
-      .from('staff_profiles')
-      .select('*', { count: 'exact', head: true })
-
-    // Get total restaurants
-    const { count: totalRestaurants } = await supabase
-      .from('restaurants')
-      .select('*', { count: 'exact', head: true })
-
-    // Get today's orders
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    // 1. Get fundamental counts and revenue in one query
+    const countsRes = await query(`
+      SELECT 
+        (SELECT count(*) FROM public.orders) as total_orders,
+        (SELECT count(*) FROM public.orders WHERE status IN ('pending', 'preparing', 'on_the_way')) as active_orders,
+        (SELECT COALESCE(sum(total_amount), 0) FROM public.orders WHERE status IN ('delivered', 'paid', 'accepted')) as total_revenue,
+        (SELECT count(*) FROM public.clients) as total_clients,
+        (SELECT count(*) FROM public.staff_profiles) as total_staff,
+        (SELECT count(*) FROM public.restaurants) as total_restaurants,
+        (SELECT count(*) FROM public.orders WHERE created_at >= CURRENT_DATE) as today_orders
+    `);
     
-    const { count: todayOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', today.toISOString())
+    const baseStats = countsRes.rows[0];
 
-    // Get recent orders
-    const { data: recentOrders } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        clients(full_name),
-        restaurants(name_en, name_ru)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(10)
+    // 2. Get recent orders with joins
+    const recentOrdersRes = await query(`
+      SELECT o.*, 
+             (SELECT json_build_object('full_name', c.full_name) FROM public.clients c WHERE c.id = o.user_id) as clients,
+             (SELECT json_build_object('name_en', r.name_en, 'name_ru', r.name_ru) FROM public.restaurants r WHERE r.id = o.cafe_id) as restaurants
+      FROM public.orders o
+      ORDER BY o.created_at DESC
+      LIMIT 10
+    `);
 
-    // Get top restaurants by orders
-    const { data: topRestaurants } = await supabase
-      .from('orders')
-      .select('cafe_id, restaurants(name_en, name_ru)')
-      .eq('status', 'delivered')
+    // 3. Get top restaurants by orders
+    const topRestaurantsRes = await query(`
+      SELECT cafe_id, count(*) as count
+      FROM public.orders
+      WHERE status IN ('delivered', 'paid', 'accepted')
+      GROUP BY cafe_id
+    `);
 
-    const restaurantCounts = topRestaurants?.reduce((acc: any, order) => {
-      const id = order.cafe_id
-      acc[id] = (acc[id] || 0) + 1
-      return acc
-    }, {})
+    const restaurantCounts = topRestaurantsRes.rows.reduce((acc: any, row: any) => {
+      acc[row.cafe_id] = parseInt(row.count);
+      return acc;
+    }, {});
 
     const stats = {
-      totalOrders: totalOrders || 0,
-      activeOrders: activeOrders || 0,
-      totalRevenue: totalRevenue,
-      totalClients: totalClients || 0,
-      totalStaff: totalStaff || 0,
-      totalRestaurants: totalRestaurants || 0,
-      todayOrders: todayOrders || 0,
-      recentOrders: recentOrders || [],
+      totalOrders: parseInt(baseStats.total_orders) || 0,
+      activeOrders: parseInt(baseStats.active_orders) || 0,
+      totalRevenue: parseFloat(baseStats.total_revenue) || 0,
+      totalClients: parseInt(baseStats.total_clients) || 0,
+      totalStaff: parseInt(baseStats.total_staff) || 0,
+      totalRestaurants: parseInt(baseStats.total_restaurants) || 0,
+      todayOrders: parseInt(baseStats.today_orders) || 0,
+      recentOrders: recentOrdersRes.rows || [],
       restaurantCounts: restaurantCounts || {},
     }
 

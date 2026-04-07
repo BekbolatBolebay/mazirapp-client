@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
+import { query } from '@/lib/db'
 
 export async function POST(request: Request) {
   console.log('API: /api/auth/send-otp called')
   try {
-    const { email, lang } = await request.json()
+    const { email, lang, isRegistration } = await request.json()
 
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 })
+    }
+
+    // Check if user exists if not registration
+    if (!isRegistration) {
+      console.log('Verifying user existence for email:', email)
+      const res = await query('SELECT id FROM public.users WHERE email = $1', [email])
+      if (res.rows.length === 0) {
+        console.log('User not found in public.users:', email)
+        return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      }
     }
 
     // Generate 6-digit code specifically for the user

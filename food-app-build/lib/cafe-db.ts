@@ -79,52 +79,43 @@ export type MenuItem = {
     sort_order: number
     created_at: string
     updated_at: string
-    categories?: Category
 }
 
-// TODO: Implement actual session/auth check since we moved away from Supabase Auth
-// For now, we'll assume a user ID is passed or handled via cookies/JWT
-export async function getCurrentRestaurantId(): Promise<string | null> {
-    // This needs to be integrated with a new auth system
-    // For migration, we'll try to find a restaurant for the "admin" user or similar
+export async function getCurrentRestaurantId(userId: string): Promise<string | null> {
     const res = await query(
-        'SELECT id FROM restaurants WHERE status != $1 LIMIT 1',
-        ['deleted']
+        'SELECT id FROM public.restaurants WHERE owner_id = $1 AND status != $2 LIMIT 1',
+        [userId, 'deleted']
     )
     return res.rows[0]?.id || null
 }
-
-export async function getCafeSettings(): Promise<Restaurant | null> {
-    const restaurantId = await getCurrentRestaurantId()
+export async function getCafeSettings(restaurantId?: string): Promise<Restaurant | null> {
     if (!restaurantId) return null
 
     const res = await query(
-        'SELECT * FROM restaurants WHERE id = $1',
+        'SELECT * FROM public.restaurants WHERE id = $1',
         [restaurantId]
     )
     return res.rows[0] || null
 }
 
-export async function getMenuCategories(): Promise<Category[]> {
-    const restaurantId = await getCurrentRestaurantId()
+export async function getMenuCategories(restaurantId?: string): Promise<Category[]> {
     if (!restaurantId) return []
 
     const res = await query(
-        'SELECT * FROM categories WHERE cafe_id = $1 AND is_active = true ORDER BY sort_order ASC',
+        'SELECT * FROM public.categories WHERE cafe_id = $1 AND is_active = true ORDER BY sort_order ASC',
         [restaurantId]
     )
     return res.rows || []
 }
 
-export async function getMenuItems(): Promise<MenuItem[]> {
-    const restaurantId = await getCurrentRestaurantId()
+export async function getMenuItems(restaurantId?: string): Promise<MenuItem[]> {
     if (!restaurantId) return []
 
     const res = await query(
         `SELECT m.*, 
                 json_build_object('id', c.id, 'name_kk', c.name_kk, 'name_ru', c.name_ru) as categories
-         FROM menu_items m
-         LEFT JOIN categories c ON m.category_id = c.id
+         FROM public.menu_items m
+         LEFT JOIN public.categories c ON m.category_id = c.id
          WHERE m.cafe_id = $1
          ORDER BY m.sort_order ASC`,
         [restaurantId]
@@ -145,7 +136,7 @@ export type WorkingHour = {
 
 export async function getWorkingHours(restaurantId: string): Promise<WorkingHour[]> {
     const res = await query(
-        'SELECT * FROM working_hours WHERE cafe_id = $1 ORDER BY day_of_week ASC',
+        'SELECT * FROM public.working_hours WHERE cafe_id = $1 ORDER BY day_of_week ASC',
         [restaurantId]
     )
     return res.rows || []

@@ -10,11 +10,26 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import pb from '@/utils/pocketbase'
 import { useApp } from '@/lib/app-context'
 import { toast } from 'sonner'
 import { resumeAudioContext } from '@/lib/sound-utils'
 import { getFcmToken } from '@/lib/firebase'
+
+// Utility function to convert VAPID key to Uint8Array for pushManager
+function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/')
+
+    const rawData = window.atob(base64)
+    const outputArray = new Uint8Array(rawData.length)
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i)
+    }
+    return outputArray
+}
 
 export function PushPrompt() {
     const { lang } = useApp()
@@ -115,9 +130,11 @@ export function PushPrompt() {
             
             if (vapidKey) {
                 try {
+                    // Convert VAPID key to Uint8Array (required by many browsers)
+                    const convertedVapidKey = urlBase64ToUint8Array(vapidKey)
                     subscription = await registration.pushManager.subscribe({
                         userVisibleOnly: true,
-                        applicationServerKey: vapidKey
+                        applicationServerKey: convertedVapidKey
                     })
                     console.log('[PushPrompt] Push subscription created successfully')
                 } catch (subError) {
@@ -148,24 +165,20 @@ export function PushPrompt() {
             }
 
             // Step 7: Save subscription and FCM token to database
-            const user = pb.authStore.model
-
-            if (!user) {
-                const errorMsg = lang === 'ru' ? 'Пользователь не авторизован' : 'Пайдаланушы авторизацияланбаған'
-                console.error('[PushPrompt]', errorMsg)
-                setError(errorMsg)
-                toast.error(errorMsg)
-                setLoading(false)
-                return
-            }
-
             console.log('[PushPrompt] Saving to database...')
 
-            await pb.collection('users').update(user.id, { 
-                push_subscription: JSON.stringify(subscription),
-                fcm_token: fcmToken,
-                updated_at: new Date().toISOString()
+            const res = await fetch('/api/admin/profile/fcm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    push_subscription: JSON.stringify(subscription),
+                    fcm_token: fcmToken
+                })
             })
+
+            if (!res.ok) {
+                throw new Error('Failed to save push settings')
+            }
 
             toast.success(lang === 'ru' ? 'Уведомления успешно включены' : 'Хабарламалар сәтті қосылды')
             resumeAudioContext()

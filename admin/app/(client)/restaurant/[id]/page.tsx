@@ -1,8 +1,9 @@
+export const dynamic = "force-dynamic"
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft, Star, Clock, MapPin, Phone } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import BottomNav from '@/components/layout/bottom-nav'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,41 +16,35 @@ import { isRestaurantOpen } from '@/lib/restaurant-utils'
 
 export default async function RestaurantPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
-    const supabase = await createClient()
 
     // Fetch restaurant details
-    const { data: restaurant } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('id', id)
-        .single()
+    const restRes = await query('SELECT * FROM restaurants WHERE id = $1', [id])
+    const restaurant = restRes.rows[0]
 
     if (!restaurant) {
         notFound()
     }
 
     // Fetch working hours
-    const { data: workingHours } = await supabase
-        .from('working_hours')
-        .select('*')
-        .eq('cafe_id', id)
-        .order('day_of_week')
+    const whRes = await query(
+        'SELECT * FROM working_hours WHERE cafe_id = $1 ORDER BY day_of_week',
+        [id]
+    )
+    const workingHours = whRes.rows
 
     // Fetch categories
-    const { data: categories } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('cafe_id', id)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
+    const catRes = await query(
+        'SELECT * FROM categories WHERE cafe_id = $1 AND is_active = true ORDER BY sort_order ASC',
+        [id]
+    )
+    const categories = catRes.rows
 
     // Fetch menu items
-    const { data: menuItems } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('cafe_id', id)
-        .eq('is_available', true)
-        .order('sort_order', { ascending: true })
+    const menuRes = await query(
+        'SELECT * FROM menu_items WHERE cafe_id = $1 AND is_available = true ORDER BY sort_order ASC',
+        [id]
+    )
+    const menuItems = menuRes.rows
 
     // Determine is_open status dynamically
     const status = isRestaurantOpen(restaurant.status, workingHours)
@@ -63,7 +58,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const todayIdx = days.indexOf(weekdayShort);
 
-    const timeInfo = workingHours?.find(h => h.day_of_week === todayIdx)
+    const timeInfo = workingHours?.find((h: any) => h.day_of_week === todayIdx)
     const workingHoursText = timeInfo && !timeInfo.is_day_off && timeInfo.open_time && timeInfo.close_time
         ? `${timeInfo.open_time.slice(0, 5)} - ${timeInfo.close_time.slice(0, 5)}`
         : 'Closed'
@@ -140,7 +135,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                             >
                                 Барлығы
                             </TabsTrigger>
-                            {categories?.map((cat) => (
+                            {categories?.map((cat: any) => (
                                 <TabsTrigger
                                     key={cat.id}
                                     value={cat.id}
@@ -153,18 +148,18 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
 
                         <TabsContent value="all" className="mt-0 pb-10">
                             <div className="grid grid-cols-2 gap-4">
-                                {menuItems?.map((item) => (
+                                {menuItems?.map((item: any) => (
                                     <MenuItemCard key={item.id} item={item} />
                                 ))}
                             </div>
                         </TabsContent>
 
-                        {categories?.map((cat) => (
+                        {categories?.map((cat: any) => (
                             <TabsContent key={cat.id} value={cat.id} className="mt-0 pb-10">
                                 <div className="grid grid-cols-2 gap-4">
                                     {menuItems
-                                        ?.filter((item) => item.category_id === cat.id)
-                                        .map((item) => (
+                                        ?.filter((item: any) => item.category_id === cat.id)
+                                        .map((item: any) => (
                                             <MenuItemCard key={item.id} item={item} />
                                         ))}
                                 </div>

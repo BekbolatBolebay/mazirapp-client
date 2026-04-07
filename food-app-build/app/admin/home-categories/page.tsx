@@ -1,7 +1,7 @@
 'use client'
+export const dynamic = "force-dynamic"
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/auth/auth-context'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -23,66 +23,70 @@ export default function HomeCategoriesPage() {
     const [categories, setCategories] = useState<Category[]>([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState<string | null>(null)
-    const supabase = createClient()
 
     useEffect(() => {
         if (profile?.role === 'super_admin') {
             fetchCategories()
-
-            // Real-time subscription
-            const channel = supabase
-                .channel('category-changes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
-                    fetchCategories()
-                })
-                .subscribe()
-
-            return () => {
-                supabase.removeChannel(channel)
-            }
         }
     }, [profile])
 
     const fetchCategories = async () => {
-        const { data, error } = await supabase
-            .from('categories')
-            .select('*')
-            .order('home_sort_order', { ascending: true })
-
-        if (error) {
-            toast.error('Категорияларды алу қатесі')
-        } else {
-            setCategories(data || [])
+        try {
+            const res = await fetch('/api/admin/categories')
+            const data = await res.json()
+            if (data.categories) {
+                setCategories(data.categories)
+            } else {
+                toast.error('Категорияларды алу қатесі')
+            }
+        } catch (error) {
+            toast.error('Сервермен байланыс қатесі')
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     const toggleVisibility = async (id: string, current: boolean) => {
         setSaving(id)
-        const { error } = await supabase
-            .from('categories')
-            .update({ home_visible: !current })
-            .eq('id', id)
-
-        if (error) {
-            toast.error('Жарнамалау статусын өзгерту қатесі')
-        } else {
-            toast.success('Статус жаңартылды')
+        try {
+            const res = await fetch('/api/admin/categories', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, home_visible: !current })
+            })
+            
+            if (res.ok) {
+                toast.success('Статус жаңартылды')
+                fetchCategories() // Refresh
+            } else {
+                toast.error('Жарнамалау статусын өзгерту қатесі')
+            }
+        } catch (error) {
+            toast.error('Сервермен байланыс қатесі')
+        } finally {
+            setSaving(null)
         }
-        setSaving(null)
     }
 
     const updateSortOrder = async (id: string, newOrder: number) => {
         setSaving(id)
-        const { error } = await supabase
-            .from('categories')
-            .update({ home_sort_order: newOrder })
-            .eq('id', id)
-
-        if (error) {
-            toast.error('Реттілікті өзгерту қатесі')
+        try {
+            const res = await fetch('/api/admin/categories', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, home_sort_order: newOrder })
+            })
+            
+            if (res.ok) {
+                fetchCategories() // Refresh
+            } else {
+                toast.error('Реттілікті өзгерту қатесі')
+            }
+        } catch (error) {
+            toast.error('Сервермен байланыс қатесі')
+        } finally {
+            setSaving(null)
         }
-        setSaving(null)
     }
 
     if (authLoading || loading) {

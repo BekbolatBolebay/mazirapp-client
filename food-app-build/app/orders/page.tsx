@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getUserOrders, getUserReservations, subscribeToOrders } from '@/lib/pocketbase/orders'
 import { Header } from '@/components/layout/header'
 import { OrderCard } from '@/components/orders/order-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -28,13 +27,17 @@ export default function OrdersPage() {
     try {
       const savedPhone = localStorage.getItem('customer_phone') || undefined
 
-      // Fetch Orders using PocketBase
-      const uniqueOrders = await getUserOrders(user?.id, savedPhone)
-      setOrders(uniqueOrders)
+      const [ordersRes, reservationsRes] = await Promise.all([
+        fetch('/api/orders').then(r => r.json()),
+        fetch('/api/reservations').then(r => r.json())
+      ])
 
-      // Fetch Reservations using PocketBase
-      const uniqueReservations = await getUserReservations(user?.id, savedPhone)
-      setReservations(uniqueReservations)
+      if (ordersRes.orders) {
+        setOrders(ordersRes.orders)
+      }
+      if (reservationsRes.reservations) {
+        setReservations(reservationsRes.reservations)
+      }
 
     } catch (err) {
       console.error('Fetch data error:', err)
@@ -46,14 +49,9 @@ export default function OrdersPage() {
   useEffect(() => {
     fetchAllData()
 
-    // Real-time updates using PocketBase
-    const unsubscribe = subscribeToOrders(() => {
-        fetchAllData()
-    })
-
-    return () => {
-      unsubscribe()
-    }
+    // Polling for updates every 10 seconds
+    const interval = setInterval(fetchAllData, 10000)
+    return () => clearInterval(interval)
   }, [user])
 
   const activeOrders = orders.filter((o) =>

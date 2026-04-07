@@ -12,7 +12,6 @@ import { Minus, Plus, Trash2, CalendarCheck, Utensils, Store, ShoppingCart } fro
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import pb from '@/utils/pocketbase'
 import { useI18n } from '@/lib/i18n/i18n-context'
 
 type Tab = 'food' | 'cafe'
@@ -124,15 +123,13 @@ export default function CartPage() {
     update()
     window.addEventListener('bookingCartUpdated', update)
 
-    // Fetch restaurant details if cart has items
+    // Fetch restaurant details if cart has items via SQL API
     if (cartItems.length > 0) {
-      pb.collection('restaurants')
-        .getOne(cartItems[0].cafe_id, {
-          fields: 'delivery_fee, name_kk, name_ru'
-        })
+      fetch(`/api/restaurants/${cartItems[0].cafe_id}`)
+        .then(res => res.json())
         .then((data) => {
-          if (data) {
-            setDeliveryFee(data.delivery_fee)
+          if (data && !data.error) {
+            setDeliveryFee(data.delivery_fee || 0)
             setRestaurant(data)
           }
         })

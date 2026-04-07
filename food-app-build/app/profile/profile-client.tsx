@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import pb from '@/utils/pocketbase'
 import {
     LogOut,
     User as UserIcon,
@@ -52,7 +51,7 @@ interface Props {
 export default function ProfileClient({ user, profile, restaurant }: Props) {
     const router = useRouter()
     const { t, locale, setLocale } = useI18n()
-    const { subscribeToPush, updateProfile } = useAuth()
+    const { subscribeToPush, updateProfile, signOut } = useAuth()
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [editName, setEditName] = useState('')
@@ -64,32 +63,24 @@ export default function ProfileClient({ user, profile, restaurant }: Props) {
     const [favoritesCount, setFavoritesCount] = useState<number | null>(null)
     const [activeOrder, setActiveOrder] = useState<any>(null)
 
+    const handleSignOut = async () => {
+        await signOut()
+        router.push('/')
+        router.refresh()
+    }
+
     useEffect(() => {
-        if (!user || user.is_anonymous) return
+        if (!user || user.role === 'guest') return
 
         const fetchStats = async () => {
             try {
-                // Fetch total orders
-                const orders = await pb.collection('orders').getList(1, 1, {
-                    filter: `user_id = "${user.id}"`,
-                })
-                setOrderCount(orders.totalItems)
-
-                // Fetch total favorites
-                const favorites = await pb.collection('favorites').getList(1, 1, {
-                    filter: `user_id = "${user.id}"`,
-                })
-                setFavoritesCount(favorites.totalItems)
-
-                // Fetch latest active order
-                const activeOrders = await pb.collection('orders').getFullList({
-                    filter: `user_id = "${user.id}" && (status = "pending" || status = "preparing" || status = "ready" || status = "delivering" || status = "on_the_way")`,
-                    sort: '-created',
-                    requestKey: null
-                })
-
-                if (activeOrders.length > 0) {
-                    setActiveOrder(activeOrders[0])
+                const res = await fetch('/api/profile/stats')
+                const data = await res.json()
+                
+                if (data && !data.error) {
+                    setOrderCount(data.orderCount)
+                    setFavoritesCount(data.favoritesCount)
+                    setActiveOrder(data.activeOrder)
                 }
             } catch (err) {
                 console.error('Error fetching profile stats:', err)
@@ -98,12 +89,6 @@ export default function ProfileClient({ user, profile, restaurant }: Props) {
 
         fetchStats()
     }, [user])
-
-    const handleSignOut = async () => {
-        pb.authStore.clear()
-        router.push('/')
-        router.refresh()
-    }
 
     const menuItems = [
         {

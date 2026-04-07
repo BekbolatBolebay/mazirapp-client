@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { Header } from '@/components/layout/header'
 import { SearchBar } from '@/components/home/search-bar'
 import Link from 'next/link'

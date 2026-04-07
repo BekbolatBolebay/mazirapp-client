@@ -418,9 +418,9 @@ export async function getRestaurantTables(restaurantId: string): Promise<Restaur
 export async function getReviews(restaurantId: string): Promise<any[]> {
     try {
         const res = await query(
-            `SELECT r.*, c.full_name as customer_name 
+            `SELECT r.*, u.full_name as customer_name 
              FROM public.reviews r
-             LEFT JOIN public.clients c ON r.client_id = c.id
+             LEFT JOIN public.users u ON r.user_id = u.id
              WHERE r.cafe_id = $1 
              ORDER BY r.created_at DESC`,
             [restaurantId]

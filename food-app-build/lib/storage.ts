@@ -11,7 +11,7 @@ const s3Client = new S3Client({
 });
 
 const BUCKET_NAME = process.env.MINIO_BUCKET || "mazir-assets";
-const PUBLIC_URL = process.env.MINIO_PUBLIC_URL || "http://mazir-minio-api.traefik.me";
+const PUBLIC_URL = process.env.MINIO_PUBLIC_URL || "";
 
 /**
  * Uploads a file to MinIO Storage

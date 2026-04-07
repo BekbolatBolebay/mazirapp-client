@@ -45,7 +45,16 @@ if [ ! -f .env ]; then
   fi
 fi
 
-# 5. Build and Start Containers sequentially to save disk space
+# 5. SSL Certificate Check
+if [ ! -d "/etc/letsencrypt/live/mazirapp.kz" ]; then
+  echo "⚠️  SSL Certificates not found in /etc/letsencrypt/live/mazirapp.kz"
+  echo "💡 You might need to run Certbot first:"
+  echo "   sudo apt-get install certbot"
+  echo "   sudo certbot certonly --standalone -d mazirapp.kz -d www.mazirapp.kz -d secure-cafes-idishere.mazirapp.kz"
+  echo "⚠️  Nginx may fail to start without these certificates."
+fi
+
+# 6. Build and Start Containers sequentially to save disk space
 echo "🏗️  Building services sequentially..."
 # 1. Start core services
 $DOCKER_COMPOSE up -d postgres minio

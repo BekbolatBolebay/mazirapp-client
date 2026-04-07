@@ -23,6 +23,27 @@ CREATE TABLE IF NOT EXISTS public.users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 1.1 Staff Profiles (For internal admin panel)
+CREATE TABLE IF NOT EXISTS public.staff_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE,
+    full_name TEXT,
+    phone TEXT,
+    role TEXT DEFAULT 'admin' CHECK (role IN ('user', 'admin', 'super_admin')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 1.2 Clients (For internal admin panel stats)
+CREATE TABLE IF NOT EXISTS public.clients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE,
+    full_name TEXT,
+    phone TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- 2. Restaurants
 CREATE TABLE IF NOT EXISTS public.restaurants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -228,6 +249,7 @@ CREATE TABLE IF NOT EXISTS public.promotions (
 CREATE TABLE IF NOT EXISTS public.reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL,
     cafe_id UUID REFERENCES public.restaurants(id) ON DELETE CASCADE,
     reservation_id UUID REFERENCES public.reservations(id) ON DELETE SET NULL,
     order_id UUID REFERENCES public.orders(id) ON DELETE SET NULL,

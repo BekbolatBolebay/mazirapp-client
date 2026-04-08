@@ -51,7 +51,7 @@ export default function RootLayout({
           <Toaster position="top-center" />
           <SWRegister />
         </AppProvider>
-        <Analytics />
+        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

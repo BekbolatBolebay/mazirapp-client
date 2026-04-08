@@ -28,7 +28,7 @@ export function RestaurantReviews({ reviews, rating }: RestaurantReviewsProps) {
         <div className="flex items-center justify-center gap-3">
           <Star className="w-10 h-10 fill-accent text-accent animate-pulse" />
           <span className="text-5xl font-black text-foreground tracking-tighter">
-            {rating?.toFixed(1) || '0.0'}
+            {typeof rating === 'number' || !isNaN(Number(rating)) ? Number(rating).toFixed(1) : '0.0'}
           </span>
         </div>
         <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">

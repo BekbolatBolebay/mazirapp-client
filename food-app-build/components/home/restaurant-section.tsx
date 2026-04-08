@@ -80,7 +80,7 @@ export function RestaurantSection({ restaurants }: { restaurants: any[] }) {
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1 bg-amber-400/10 px-2 py-1 rounded-xl border border-amber-400/20">
                       <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                      <span className="text-xs font-black text-amber-700 dark:text-amber-400">{restaurant.rating > 0 ? (restaurant.rating).toFixed(1) : '—'}</span>
+                      <span className="text-xs font-black text-amber-700 dark:text-amber-400">{typeof restaurant.rating === 'number' || !isNaN(Number(restaurant.rating)) ? (Number(restaurant.rating) > 0 ? Number(restaurant.rating).toFixed(1) : '—') : '—'}</span>
                     </div>
                     
                     <div className="flex items-center gap-1.5 text-xs font-black text-primary dark:text-primary">

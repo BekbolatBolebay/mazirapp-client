@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
-import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
+import { motion, useScroll, useTransform } from 'framer-motion'
 import {
-  ArrowLeft, Star, Clock, MapPin, Phone,
-  CalendarCheck, Share2, Info, ShoppingBag
+  ArrowLeft, Star, Clock, MapPin,
+  CalendarCheck, Info, ShoppingBag
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -170,7 +169,7 @@ export function RestaurantClient({
           <div className="flex flex-col items-center gap-1">
             <div className="flex items-center gap-1 text-primary">
               <Star className="w-4 h-4 fill-primary" />
-              <span className="font-black text-lg">{restaurant.rating.toFixed(1)}</span>
+              <span className="font-black text-lg">{typeof restaurant.rating === 'number' || !isNaN(Number(restaurant.rating)) ? Number(restaurant.rating).toFixed(1) : '0.0'}</span>
             </div>
             <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t.restaurant.rating}</span>
           </div>
@@ -234,8 +233,8 @@ export function RestaurantClient({
             )}
             {restaurant.latitude && restaurant.longitude && (
               <RestaurantMap
-                latitude={restaurant.latitude}
-                longitude={restaurant.longitude}
+                latitude={Number(restaurant.latitude)}
+                longitude={Number(restaurant.longitude)}
                 restaurantName={locale === 'ru' ? restaurant.name_ru : (restaurant.name_kk || restaurant.name_ru)}
                 address={restaurant.address}
               />
@@ -313,8 +312,8 @@ export function RestaurantClient({
                     {t.restaurant.noMenuItems}
                   </h3>
                   <p className="text-xs text-muted-foreground font-medium max-w-[200px] mx-auto">
-                    {activeTab === 'all' 
-                      ? "Бұл кафеде әзірге тағамдар жоқ" 
+                    {activeTab === 'all'
+                      ? "Бұл кафеде әзірге тағамдар жоқ"
                       : "Бұл санатта әзірге тағамдар жоқ"}
                   </p>
                 </div>

@@ -73,7 +73,7 @@ export function FeaturedSlider({ restaurants }: FeaturedSliderProps) {
                                     <div className="flex items-center gap-3 text-xs font-bold text-white/80">
                                         <div className="flex items-center gap-1">
                                             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                                            <span>{restaurant.rating != null ? restaurant.rating.toFixed(1) : '0.0'}</span>
+                                            <span>{typeof restaurant.rating === 'number' || !isNaN(Number(restaurant.rating)) ? Number(restaurant.rating).toFixed(1) : '0.0'}</span>
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <Clock className="w-3.5 h-3.5" />

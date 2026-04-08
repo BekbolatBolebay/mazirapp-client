@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+}
+
+:root {
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+}
+
+@layer base {
+  * {
+    @apply transition-colors duration-300;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Dark Mode Styles */
+  .dark, [data-theme='dark'] {
+    color-scheme: dark;
+  }
+
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  /* Force dark mode on common background classes when .dark is present */
+  .dark .bg-white,
+  .dark .bg-white\/80,
+  .dark .bg-white\/50 {
+    @apply bg-slate-900! text-white!;
+  }
+
+  .dark .bg-slate-50,
+  .dark .bg-slate-50\/50,
+  .dark .bg-slate-50\/80 {
+    @apply bg-slate-950! text-slate-100!;
+  }
+
+  .dark .bg-slate-100,
+  .dark .bg-slate-100\/50,
+  .dark .bg-slate-100\/80 {
+    @apply bg-slate-800! text-slate-100!;
+  }
+
+  .dark .bg-slate-200 {
+    @apply bg-slate-700! text-slate-100!;
+  }
+
+  /* Sidebar and Header specific overrides if needed */
+  .dark aside, 
+  .dark header {
+    @apply bg-slate-900! border-slate-800!;
+  }
+
+  .dark .border-slate-200, 
+  .dark .border-slate-100,
+  .dark .border-slate-50,
+  .dark .border-slate-700 {
+    @apply border-slate-800!;
+  }
+
+  .dark .text-slate-900 {
+    @apply text-white!;
+  }
+
+  .dark .text-slate-700 {
+    @apply text-slate-200!;
+  }
+
+  .dark .text-slate-600,
+  .dark .text-slate-500 {
+    @apply text-slate-400!;
+  }
+
+  .dark .text-slate-400 {
+    @apply text-slate-500!;
+  }
+
+  .dark .shadow-sm,
+  .dark .shadow-md,
+  .dark .shadow-lg,
+  .dark .shadow-xl {
+    @apply shadow-none!;
+  }
+
+  .dark .hover\:shadow-xl:hover {
+    @apply shadow-primary/10!;
+  }
+
+  /* Specific component overrides for dark mode */
+  .dark input, 
+  .dark select, 
+  .dark textarea {
+    @apply bg-slate-800! border-slate-700! text-white!;
+  }
+
+  .dark .bg-emerald-50 { @apply bg-emerald-900/20!; }
+  .dark .bg-amber-50 { @apply bg-amber-900/20!; }
+  .dark .bg-rose-50 { @apply bg-rose-900/20!; }
+  .dark .bg-blue-50 { @apply bg-blue-900/20!; }
+
+  /* Compact Mode Styles */
+  .table-compact table td,
+  .table-compact table th {
+    @apply py-2 px-4 text-xs;
+  }
+
+  .table-compact .p-8 {
+    @apply p-4;
+  }
+
+  .table-compact .p-6 {
+    @apply p-3;
+  }
+
+  .table-compact .space-y-8 {
+    @apply space-y-4;
+  }
+
+  .table-compact h1 {
+    @apply text-xl;
+  }
+
+  .table-compact h3 {
+    @apply text-base;
+  }
+}

@@ -1,0 +1,2 @@
+-- Enable Realtime for the reservations table
+ALTER PUBLICATION supabase_realtime ADD TABLE reservations;

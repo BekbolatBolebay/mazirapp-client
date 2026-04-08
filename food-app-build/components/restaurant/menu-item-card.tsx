@@ -1,0 +1,376 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import Image from 'next/image'
+import { Plus, Minus, X, ShoppingCart, MapPin, Utensils, Star, Clock, Info, ChevronRight, Share2, Plus as PlusIcon } from 'lucide-react'
+import { useI18n } from '@/lib/i18n/i18n-context'
+import { addToLocalCart, LocalCartItem } from '@/lib/storage/local-storage'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth/auth-context'
+import { AuthModal } from '@/components/auth/auth-modal'
+
+export function MenuItemCard({ 
+  item, 
+  isOpen = true, 
+  isCombo = false,
+  layout = 'grid'
+}: { 
+  item: any, 
+  isOpen?: boolean, 
+  isCombo?: boolean,
+  layout?: 'grid' | 'horizontal'
+}) {
+  const { locale, t } = useI18n()
+  const { user, profile } = useAuth()
+  const [open, setOpen] = useState(false)
+  const [qty, setQty] = useState(1)
+  const [mismatchOpen, setMismatchOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [pendingAddToCart, setPendingAddToCart] = useState<{ quantity: number, force: boolean } | null>(null)
+
+  const isHorizontal = layout === 'horizontal'
+
+  // -- Hash-based auto-open --
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash === `#item-${item.id}`) {
+        setOpen(true)
+        setQty(1)
+      }
+    }
+    handleHash()
+    window.addEventListener('hashchange', handleHash)
+    return () => window.removeEventListener('hashchange', handleHash)
+  }, [item.id])
+
+  const name = locale === 'ru' ? (item.name_ru || item.name_kk || 'Без названия') : (item.name_kk || item.name_ru || 'Атаусыз')
+  const desc = locale === 'ru' ? (item.description_ru || item.description_kk || '') : (item.description_kk || item.description_ru || '')
+  const cafeName = locale === 'ru'
+    ? (item.restaurant?.name_ru || item.restaurant?.name_kk || '')
+    : (item.restaurant?.name_kk || item.restaurant?.name_ru || '')
+
+  function addToCart(quantity = 1, force = false) {
+    console.log('addToCart called', { quantity, force, user: !!user });
+    if (!isOpen) {
+      toast.error(t.restaurant.closedNow)
+      return
+    }
+
+    // Check if user is authenticated (either logged in or anonymous)
+    if (!user) {
+      console.log('User not found, opening AuthModal');
+      setPendingAddToCart({ quantity, force })
+      setAuthModalOpen(true)
+      return
+    }
+
+    const cartItem: LocalCartItem = {
+      id: `cart_${Date.now()}_${item.id}`,
+      menu_item_id: item.id,
+      cafe_id: item.cafe_id,
+      quantity,
+      menu_item: {
+        name_kk: item.name_kk || item.name_ru,
+        name_ru: item.name_ru,
+        name_en: item.name_en,
+        price: item.price,
+        image_url: item.image_url || '',
+        restaurant: {
+          name_kk: item.restaurant?.name_ru || '',
+          name_ru: item.restaurant?.name_ru || '',
+          name_en: item.restaurant?.name_en || '',
+        },
+      },
+    }
+
+    const res = addToLocalCart(cartItem, force)
+    if (res.mismatch) {
+      setMismatchOpen(true)
+      return
+    }
+
+    toast.success(`${name} — ${t.cart.addedToCart} ✓`)
+    setOpen(false)
+    setQty(1)
+    setMismatchOpen(false)
+  }
+
+  return (
+    <>
+      {/* ── Card ── */}
+      <div
+        className={cn(
+          "bg-white dark:bg-zinc-900 rounded-[2rem] border border-zinc-100 dark:border-zinc-800 overflow-hidden cursor-pointer active:scale-[0.98] transition-all shadow-sm hover:shadow-xl hover:shadow-primary/5 hover:border-primary/20",
+          isHorizontal ? "flex h-36" : "flex flex-col",
+          !isOpen && "opacity-80"
+        )}
+        onClick={() => { setOpen(true); setQty(1) }}
+      >
+        {/* Image */}
+        <div className={cn("relative bg-muted/30", isHorizontal ? "w-36 h-36 shrink-0" : "aspect-square")}>
+          {item.image_url ? (
+            <Image
+              src={item.image_url}
+              alt={name}
+              fill
+              className="object-cover transition-transform duration-500 group-hover:scale-110"
+              unoptimized
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/10 select-none">
+              <Utensils className="w-12 h-12" />
+            </div>
+          )}
+          {/* Quick add button for grid */}
+          {!isHorizontal && (
+            <button
+              onClick={e => { e.stopPropagation(); addToCart(1) }}
+              disabled={!item.is_available || !isOpen}
+              className="absolute bottom-2 right-2 w-10 h-10 rounded-2xl bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/20 active:scale-90 transition-all disabled:opacity-40 z-10"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        <div className={cn("p-4 flex-1 flex flex-col justify-between", isHorizontal ? "pl-4 pr-3 py-4" : "p-3")}>
+          <div className="space-y-1">
+            <p className={cn("font-black text-zinc-900 dark:text-white leading-tight uppercase tracking-tight", isHorizontal ? "text-sm line-clamp-1" : "text-xs line-clamp-2")}>
+               {name}
+            </p>
+            {isHorizontal && desc && (
+              <p className="text-[10px] text-muted-foreground line-clamp-2 font-medium leading-normal opacity-70">{desc}</p>
+            )}
+            {cafeName && (
+              <p className="text-[9px] text-muted-foreground/60 flex items-center gap-1 truncate font-black uppercase tracking-widest mt-1">
+                <MapPin className="w-2.5 h-2.5 shrink-0" />
+                {cafeName}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-base font-black text-primary tracking-tight">
+              {(Number(item.price) || 0).toFixed(0)}<span className="text-xs ml-0.5">₸</span>
+            </p>
+            {isHorizontal && (
+               <button
+                 onClick={e => { e.stopPropagation(); addToCart(1) }}
+                 disabled={!item.is_available || !isOpen}
+                 className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center active:scale-90 transition-all disabled:opacity-40 hover:bg-primary hover:text-white shadow-sm"
+               >
+                 <Plus className="w-5 h-5" />
+               </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Modal (bottom sheet) ── */}
+      {open && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+          {/* Sheet */}
+          <div className="fixed bottom-0 left-0 right-0 z-[70] bg-card/95 dark:bg-zinc-900/95 backdrop-blur-xl rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] flex flex-col max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300">
+            {/* Close button */}
+            <div className="flex justify-end p-4 pb-0">
+              <button
+                onClick={() => setOpen(false)}
+                className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center active:scale-90 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 pb-6 custom-scrollbar">
+              {/* Image */}
+              {item.image_url && (
+                <div className="relative h-52 mx-4 rounded-2xl overflow-hidden bg-muted">
+                  <Image src={item.image_url} alt={name} fill className="object-cover" unoptimized />
+                </div>
+              )}
+
+              <div className="py-4">
+                {/* Cafe name */}
+                {cafeName && (
+                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    {cafeName}
+                  </p>
+                )}
+
+                {/* Name */}
+                <h2 className="text-xl font-bold text-foreground mb-2">{name}</h2>
+
+                {/* Description */}
+                {desc && (
+                  <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{desc}</p>
+                )}
+
+                {/* Price */}
+                <div className="flex items-end justify-between mb-5">
+                  <div>
+                    <p className="text-2xl font-bold text-primary relative">
+                      {item.type === 'rental' && (
+                        <Badge variant="secondary" className="absolute -top-6 left-0 bg-primary/80 text-white border-none text-[10px]">
+                          {t.cart.rental}
+                        </Badge>
+                      )}
+                      {item.original_price && (
+                        <span className="text-base text-muted-foreground line-through mr-2">
+                          {((Number(item.original_price) || 0) * qty).toFixed(0)}₸
+                        </span>
+                      )}
+                      {((Number(item.price) || 0) * qty).toFixed(0)}₸
+                    </p>
+                    {item.type === 'rental' && (
+                      <p className="text-[10px] text-muted-foreground font-medium">
+                        {t.cart.forRent}
+                      </p>
+                    )}
+                  </div>
+                  {item.type === 'rental' && item.rental_deposit && (
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-foreground">+{item.rental_deposit.toFixed(0)}₸</p>
+                      <p className="text-[10px] text-muted-foreground">{t.cart.deposit}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Combo Items */}
+                {isCombo && item.combo_items && Array.isArray(item.combo_items) && (item.combo_items.length > 0) && (
+                  <div className="mb-6 space-y-3">
+                    <h3 className="text-sm font-bold text-foreground border-b pb-2">
+                      {t.cart.comboComposition}
+                    </h3>
+                    <div className="space-y-2">
+                    {(item.combo_items as any[]).map((subItem, idx) => {
+                      const subItemId = subItem.item_id || subItem.id
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 p-2 rounded-xl bg-secondary/30 border border-border/50 transition-all hover:bg-secondary/50 cursor-pointer active:scale-[0.98]"
+                          onClick={() => {
+                            if (subItemId) {
+                              window.location.hash = `item-${subItemId}`
+                            }
+                          }}
+                        >
+                          {subItem.image_url && (
+                            <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+                              <Image src={subItem.image_url} alt={subItem.name} fill className="object-cover" unoptimized />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{subItem.name}</p>
+                            {subItem.description && (
+                              <p className="text-[10px] text-muted-foreground line-clamp-1">{subItem.description}</p>
+                            )}
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Plus className="w-4 h-4 text-primary" />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sticky Footer Action Bar */}
+            <div className="p-5 bg-card/50 dark:bg-zinc-900/50 border-t border-border/50 backdrop-blur-sm">
+              {!item.is_available && (
+                <p className="text-center text-xs text-destructive font-medium mb-3">{t.restaurant.temporaryUnavailable}</p>
+              )}
+              {!isOpen && item.is_available && (
+                <p className="text-center text-xs text-destructive font-medium mb-3">{t.restaurant.closedNow}</p>
+              )}
+              
+              <div className="flex items-center gap-3">
+                {/* Qty stepper */}
+                <div className="flex items-center gap-2 bg-secondary/80 dark:bg-zinc-800/80 rounded-2xl px-2 py-1.5 border border-border/40">
+                  <button
+                    onClick={() => setQty(q => Math.max(1, q - 1))}
+                    className="w-10 h-10 rounded-xl bg-card dark:bg-zinc-900 flex items-center justify-center active:scale-90 transition-all shadow-sm border border-border/20"
+                  >
+                    <Minus className="w-5 h-5" />
+                  </button>
+                  <span className="text-lg font-black w-8 text-center tabular-nums">{qty}</span>
+                  <button
+                    onClick={() => setQty(q => q + 1)}
+                    className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-primary/20"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Add to cart */}
+                <Button
+                  className="flex-1 h-14 gap-2 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/20 active:scale-95 transition-all"
+                  disabled={!item.is_available || !isOpen}
+                  onClick={() => addToCart(qty)}
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  {isOpen ? (t.cart.addToCart) : (t.restaurant.closed)}
+                  <span className="ml-auto bg-white/20 px-2 py-1 rounded-lg text-[10px]">
+                    {(item.price * qty).toFixed(0)}₸
+                  </span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Mismatch Dialog ── */}
+      {mismatchOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold mb-2">
+              {t.cart.mismatchTitle}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              {t.cart.mismatchDesc}
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl"
+                onClick={() => setMismatchOpen(false)}
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1 rounded-xl"
+                onClick={() => addToCart(qty, true)}
+              >
+                {t.cart.clearAndAdd}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Auth Modal ── */}
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
+        onSuccess={() => {
+          if (pendingAddToCart) {
+            addToCart(pendingAddToCart.quantity, pendingAddToCart.force)
+            setPendingAddToCart(null)
+          }
+          setAuthModalOpen(false)
+        }}
+      />
+    </>
+  )
+}

@@ -1,0 +1,41 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { verify } from 'jsonwebtoken'
+import { query } from '@/lib/db'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'mazir_super_secret_jwt_key_2026'
+
+export async function GET(req: NextRequest) {
+  try {
+    const cookieStore = await cookies()
+    const token = cookieStore.get('mazir_auth_token')?.value
+
+    if (!token) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
+    const decoded = verify(token, JWT_SECRET) as any
+    if (!decoded || !decoded.userId) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+    }
+
+    const res = await query('SELECT * FROM public.users WHERE id = $1', [decoded.userId])
+    if (res.rows.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    const user = res.rows[0]
+    return NextResponse.json({
+      id: user.id,
+      full_name: user.full_name,
+      avatar_url: user.avatar_url,
+      phone: user.phone,
+      is_anonymous: user.is_anonymous || false,
+      role: user.role,
+      updated_at: user.updated_at
+    })
+  } catch (error: any) {
+    console.error('Auth Me Error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}

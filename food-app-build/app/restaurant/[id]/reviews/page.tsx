@@ -61,7 +61,7 @@ export default async function RestaurantReviewsPage({ params }: { params: Promis
           <section className="text-center py-4 space-y-2 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="flex items-center justify-center gap-2">
               <Star className="w-10 h-10 fill-accent text-accent" />
-              <span className="text-5xl font-black text-foreground">{restaurant.rating?.toFixed(1) || '0.0'}</span>
+              <span className="text-5xl font-black text-foreground">{Number(restaurant.rating || 0).toFixed(1)}</span>
             </div>
             <p className="text-muted-foreground font-medium">
               {reviews?.length || 0} пікір қалдырылды

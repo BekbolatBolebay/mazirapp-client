@@ -59,7 +59,7 @@ export function CartList({ items }: { items: LocalCartItem[] }) {
 
                 <div className="flex items-center justify-between">
                   <span className="text-primary font-bold">
-                    {(item.menu_item.price * item.quantity).toFixed(0)}₸
+                    {(Number(item.menu_item.price || 0) * item.quantity).toFixed(0)}₸
                   </span>
 
                   <div className="flex items-center gap-2">

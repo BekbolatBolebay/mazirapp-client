@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 const fontStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from 'next-themes'
 import { AuthProvider } from '@/lib/auth/auth-context'
 import { I18nProvider } from '@/lib/i18n/i18n-context'
@@ -75,7 +74,6 @@ export default function RootLayout({
             </I18nProvider>
           </AuthProvider>
         </ThemeProvider>
-        <Analytics />
       </body>
     </html>
   )

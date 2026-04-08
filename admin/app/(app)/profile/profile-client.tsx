@@ -517,7 +517,7 @@ export default function ProfileClient({ settings, workingHours, userProfile }: P
               </div>
               {coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && (
                 <p className="text-[10px] text-muted-foreground italic">
-                  Координаты: {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+                  Координаты: {Number(coords.lat).toFixed(6)}, {Number(coords.lng).toFixed(6)}
                 </p>
               )}
             </div>

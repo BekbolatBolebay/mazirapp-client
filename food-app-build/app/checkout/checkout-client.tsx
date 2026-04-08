@@ -1049,7 +1049,7 @@ export function CheckoutClient() {
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">{t.cart.address}</p>
                                                 <p className="text-sm font-bold leading-tight">{orderType === 'delivery' ? address : (orderType === 'booking' ? (locale === 'kk' ? 'Стол №' : 'Стол №') + allTables.find(t => t.id === selectedTableId)?.table_number : t.cart.pickup)}</p>
                                                 {distance && orderType === 'delivery' && (
-                                                    <p className="text-[10px] font-medium text-primary mt-1">~{distance.toFixed(1)} {locale === 'kk' ? 'км' : 'км'}</p>
+                                                    <p className="text-[10px] font-medium text-primary mt-1">~{Number(distance || 0).toFixed(1)} {locale === 'kk' ? 'км' : 'км'}</p>
                                                 )}
                                             </div>
                                         </div>
@@ -1097,7 +1097,7 @@ export function CheckoutClient() {
                                                 </span>
                                                 {distance !== null && distance > 0 && coords && (
                                                     <span className="text-[10px] text-muted-foreground font-medium italic">
-                                                        ~{distance.toFixed(1)} {locale === 'kk' ? 'км' : 'км'}
+                                                        ~{Number(distance || 0).toFixed(1)} {locale === 'kk' ? 'км' : 'км'}
                                                     </span>
                                                 )}
                                             </div>

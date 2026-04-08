@@ -224,10 +224,10 @@ export function MenuItemCard({
                       )}
                       {item.original_price && (
                         <span className="text-base text-muted-foreground line-through mr-2">
-                          {((Number(item.original_price) || 0) * qty).toFixed(0)}₸
+                          {(Number(item.original_price || 0) * qty).toFixed(0)}₸
                         </span>
                       )}
-                      {((Number(item.price) || 0) * qty).toFixed(0)}₸
+                      {(Number(item.price || 0) * qty).toFixed(0)}₸
                     </p>
                     {item.type === 'rental' && (
                       <p className="text-[10px] text-muted-foreground font-medium">
@@ -237,7 +237,7 @@ export function MenuItemCard({
                   </div>
                   {item.type === 'rental' && item.rental_deposit && (
                     <div className="text-right">
-                      <p className="text-xs font-bold text-foreground">+{item.rental_deposit.toFixed(0)}₸</p>
+                      <p className="text-xs font-bold text-foreground">+{Number(item.rental_deposit || 0).toFixed(0)}₸</p>
                       <p className="text-[10px] text-muted-foreground">{t.cart.deposit}</p>
                     </div>
                   )}
@@ -321,7 +321,7 @@ export function MenuItemCard({
                   <ShoppingCart className="w-5 h-5" />
                   {isOpen ? (t.cart.addToCart) : (t.restaurant.closed)}
                   <span className="ml-auto bg-white/20 px-2 py-1 rounded-lg text-[10px]">
-                    {(item.price * qty).toFixed(0)}₸
+                    {(Number(item.price || 0) * qty).toFixed(0)}₸
                   </span>
                 </Button>
               </div>

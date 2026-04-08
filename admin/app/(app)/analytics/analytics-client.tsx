@@ -120,7 +120,7 @@ export default function AnalyticsClient({ orders, menuItems }: Props) {
                   <CartesianGrid vertical={false} stroke={gridColor} />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} width={40}
-                    tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                    tickFormatter={(v) => Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(0)}k` : v} />
                   <Tooltip
                     contentStyle={{
                       background: theme === 'dark' ? '#1e293b' : '#fff',

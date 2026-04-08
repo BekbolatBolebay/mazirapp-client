@@ -47,8 +47,8 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
     const todayIdx = days.indexOf(weekdayShort);
 
     const timeInfo = workingHoursRes.rows?.find((h: any) => h.day_of_week === todayIdx)
-    const workingHoursText = timeInfo && !timeInfo.is_day_off
-      ? `${timeInfo.open_time.slice(0, 5)} - ${timeInfo.close_time.slice(0, 5)}`
+    const workingHoursText = timeInfo && !timeInfo.is_day_off && timeInfo.open_time && timeInfo.close_time
+      ? `${String(timeInfo.open_time).slice(0, 5)} - ${String(timeInfo.close_time).slice(0, 5)}`
       : ''
 
     return (

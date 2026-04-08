@@ -80,7 +80,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ id:
                             <h1 className="text-2xl font-bold">{restaurant.name_ru || restaurant.name_en}</h1>
                             <div className="flex items-center gap-1.5 ml-2 bg-accent/10 px-2 py-1 rounded-lg">
                                 <Star className="w-4 h-4 fill-accent text-accent" />
-                                <span className="text-base font-bold text-accent">{(restaurant.rating || 5.0).toFixed(1)}</span>
+                                <span className="text-base font-bold text-accent">{Number(restaurant.rating || 5.0).toFixed(1)}</span>
                             </div>
                         </div>
 

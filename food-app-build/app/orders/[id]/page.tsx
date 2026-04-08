@@ -189,11 +189,11 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                           {locale === 'ru' ? (item.menu_items?.name_ru || item.name_ru) : (item.menu_items?.name_kk || item.name_kk || item.menu_items?.name_ru || item.name_ru || item.menu_items?.name)}
                         </p>
                         <p className="text-[10px] font-black text-primary/60 mt-0.5">
-                          {item.quantity} × {item.price.toFixed(0)}₸
+                          {item.quantity} × {Number(item.price || 0).toFixed(0)}₸
                         </p>
                       </div>
                       <p className="text-sm font-black text-white">
-                        {(item.quantity * item.price).toFixed(0)}₸
+                        {(item.quantity * Number(item.price || 0)).toFixed(0)}₸
                       </p>
                     </div>
                   ))}
@@ -204,11 +204,11 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
               <div className="space-y-4 mb-10">
                 <div className="flex justify-between items-center px-2">
                   <p className="text-xs font-bold text-muted-foreground/60">{locale === 'ru' ? 'Доставка' : 'Жеткізу'}</p>
-                  <p className="text-sm font-bold">{(order.delivery_fee || 0).toFixed(0)}₸</p>
+                  <p className="text-sm font-bold">{Number(order.delivery_fee || 0).toFixed(0)}₸</p>
                 </div>
                 <div className="flex justify-between items-center px-2">
                   <p className="text-xs font-bold text-muted-foreground/60">{locale === 'ru' ? 'Стоимость блюд' : 'Тамақ бағалары'}</p>
-                  <p className="text-sm font-bold">{(order.total_amount - (order.delivery_fee || 0)).toFixed(0)}₸</p>
+                  <p className="text-sm font-bold">{Number(order.total_amount - (order.delivery_fee || 0)).toFixed(0)}₸</p>
                 </div>
                 <div className="pt-6 border-t border-dashed border-white/10 flex justify-between items-end px-2">
                   <div>
@@ -216,7 +216,7 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                       {locale === 'ru' ? 'Итого' : 'Жалпы сумма'}
                     </p>
                     <p className="text-4xl font-black tracking-tighter text-white leading-none">
-                      {order.total_amount.toFixed(0)}<span className="text-xl ml-1 text-zinc-500">₸</span>
+                      {Number(order.total_amount || 0).toFixed(0)}<span className="text-xl ml-1 text-zinc-500">₸</span>
                     </p>
                   </div>
                   {order.status === 'awaiting_payment' && (

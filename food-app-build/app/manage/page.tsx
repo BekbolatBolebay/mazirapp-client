@@ -57,7 +57,7 @@ export default async function ManagePage() {
                     <div className="bg-secondary/50 rounded-2xl p-4 border border-border/50">
                         <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Rating</p>
                         <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-sm">{(cafe.rating || 0).toFixed(1)}</span>
+                            <span className="font-bold text-sm">{Number(cafe.rating || 0).toFixed(1)}</span>
                             <span className="text-[10px] text-muted-foreground">/ 5.0</span>
                         </div>
                     </div>

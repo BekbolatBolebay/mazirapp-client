@@ -1,5 +1,5 @@
-"use server"
 import { query } from '@/lib/db';
+import { pb } from './client';
 
 export async function getRestaurantSettings(id: string) {
     try {
@@ -121,6 +121,13 @@ export async function createOrder(data: any, items: any[]) {
 }
 
 export async function subscribeToRestaurantSettings(id: string, callback: (data: any) => void) {
-    console.warn('subscribeToRestaurantSettings: Real-time not yet implemented for SQL backend');
-    return () => {};
+    try {
+        const unsubscribe = await pb.collection('restaurants').subscribe(id, (e) => {
+            callback(e.record);
+        });
+        return unsubscribe;
+    } catch (error) {
+        console.error('Error subscribing to restaurant settings in PocketBase:', error);
+        return () => {};
+    }
 }

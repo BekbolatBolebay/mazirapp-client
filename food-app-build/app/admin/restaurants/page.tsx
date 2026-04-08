@@ -81,7 +81,7 @@ export default function AdminRestaurants() {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-1">
-                                            <span className="font-bold">{item.rating.toFixed(1)}</span>
+                                            <span className="font-bold">{Number(item.rating || 0).toFixed(1)}</span>
                                             <span className="text-xs text-muted-foreground">/ 5.0</span>
                                         </div>
                                     </td>

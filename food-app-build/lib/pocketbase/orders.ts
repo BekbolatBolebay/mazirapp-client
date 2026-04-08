@@ -1,5 +1,5 @@
-"use server"
 import { query } from '@/lib/db';
+import { pb } from './client';
 
 export async function getUserOrders(userId?: string, phone?: string) {
     try {
@@ -68,9 +68,17 @@ export async function getUserReservations(userId?: string, phone?: string) {
     }
 }
 
-export async function subscribeToOrders(callback: () => void) {
-    // PG Real-time would require a separate setup (LISTEN/NOTIFY)
-    // For now, we return a no-op unsubscribe
-    console.warn('subscribeToOrders: Real-time not yet implemented for SQL backend');
-    return () => {};
+export async function subscribeToOrders(callback: (data: any) => void) {
+    try {
+        // Remove 'use server' if this is called from client components
+        // Note: For real-time, the client should call pb.collection directly.
+        // This wrapper is for consistent API usage.
+        const unsubscribe = await pb.collection('orders').subscribe('*', (e) => {
+            callback(e.record);
+        });
+        return unsubscribe;
+    } catch (error) {
+        console.error('Error subscribing to orders in PocketBase:', error);
+        return () => {};
+    }
 }

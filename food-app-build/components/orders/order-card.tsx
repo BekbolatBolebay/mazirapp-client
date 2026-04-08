@@ -89,7 +89,7 @@ export function OrderCard({ order }: { order: Order }) {
                 </p>
                 <div className="flex items-center gap-2">
                   <p className="text-[10px] font-black text-zinc-500">
-                    {item.price.toFixed(0)}₸
+                    {Number(item.price || 0).toFixed(0)}₸
                   </p>
                   <div className="px-2 py-0.5 rounded-lg bg-primary/10 border border-primary/20">
                     <p className="text-[10px] font-black text-primary">
@@ -111,14 +111,14 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="space-y-4 mb-8">
           <div className="flex justify-between items-center px-2">
             <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{locale === 'ru' ? 'Доставка' : 'Жеткізу'}</p>
-            <p className="text-sm font-bold text-zinc-300">{order.delivery_fee.toFixed(0)}₸</p>
+            <p className="text-sm font-bold text-zinc-300">{Number(order.delivery_fee || 0).toFixed(0)}₸</p>
           </div>
           <div className="pt-4 border-t border-dashed border-white/10 flex justify-between items-end px-2">
             <p className="text-[10px] font-black uppercase tracking-widest text-primary/80">
               {locale === 'ru' ? 'Общая сумма' : 'Жалпы сумма'}
             </p>
             <p className="text-3xl font-black tracking-tighter text-white">
-              {order.total_amount.toFixed(0)}<span className="text-lg ml-0.5 text-zinc-600">₸</span>
+              {Number(order.total_amount || 0).toFixed(0)}<span className="text-lg ml-0.5 text-zinc-600">₸</span>
             </p>
           </div>
         </div>

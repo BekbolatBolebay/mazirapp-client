@@ -74,8 +74,8 @@ echo "🏗️  Building Client App..."
 $DOCKER_COMPOSE up -d --build client
 echo "✅ Client App built and started."
 
-# 5. Start Nginx
-$DOCKER_COMPOSE up -d nginx
+# 5. Start Nginx and Dozzle
+$DOCKER_COMPOSE up -d nginx dozzle
 
 echo "✅ Deployment successful!"
 echo "🌐 Your app should be running. Check Nginx logs or '$DOCKER_COMPOSE ps' for status."

@@ -12,6 +12,10 @@ pb.autoCancellation(false);
  * PocketBase-ке әкімші ретінде кіру (Сервер жағында деректерді өңдеу үшін қажет)
  */
 export async function getPbAdmin() {
+    // Bypass self-signed certificate errors for VPS connections
+    if (typeof window === 'undefined') {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
     const adminEmail = process.env.POCKETBASE_ADMIN_EMAIL;
     const adminPassword = process.env.POCKETBASE_ADMIN_PASSWORD;
     

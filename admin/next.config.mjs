@@ -31,7 +31,6 @@ const nextConfig = {
       ]
     },
     staticGenerationRetryCount: 1,
-    turbopack: {},
   },
 }
 

@@ -3,6 +3,13 @@ import { Pool } from 'pg';
 
 if (!process.env.POSTGRES_URL) {
   console.error('❌ CRITICAL: POSTGRES_URL is not defined in environment variables');
+} else {
+  try {
+    const url = new URL(process.env.POSTGRES_URL);
+    console.log(`📡 Connecting to DB: ${url.hostname}:${url.port} (User: ${url.username})`);
+  } catch (e) {
+    console.log('📡 Connecting to DB: [URL format error]');
+  }
 }
 
 const pool = new Pool({

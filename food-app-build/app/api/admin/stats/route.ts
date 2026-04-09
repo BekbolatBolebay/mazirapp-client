@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
-import { query } from '@/lib/db'
+import { getPbAdmin } from '@/lib/pocketbase/client'
+import { supabase } from '@/lib/supabase'
 import { verifyAdmin, createAdminResponse, createAdminError } from '@/lib/auth/admin'
 
 // GET dashboard statistics
@@ -10,57 +11,63 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Get fundamental counts and revenue in one query
-    const countsRes = await query(`
-      SELECT 
-        (SELECT count(*) FROM public.orders) as total_orders,
-        (SELECT count(*) FROM public.orders WHERE status IN ('pending', 'preparing', 'on_the_way')) as active_orders,
-        (SELECT COALESCE(sum(total_amount), 0) FROM public.orders WHERE status IN ('delivered', 'paid', 'accepted')) as total_revenue,
-        (SELECT count(*) FROM public.clients) as total_clients,
-        (SELECT count(*) FROM public.staff_profiles) as total_staff,
-        (SELECT count(*) FROM public.restaurants) as total_restaurants,
-        (SELECT count(*) FROM public.orders WHERE created_at >= CURRENT_DATE) as today_orders
-    `);
+    const adminPb = await getPbAdmin()
     
-    const baseStats = countsRes.rows[0];
+    // 1. Get fundamental counts from PocketBase (Sensitive Data)
+    const activeOrders = await adminPb.collection('orders').getList(1, 1, {
+      filter: 'status = "pending" || status = "preparing" || status = "on_the_way"'
+    });
 
-    // 2. Get recent orders with joins
-    const recentOrdersRes = await query(`
-      SELECT o.*, 
-             (SELECT json_build_object('full_name', c.full_name) FROM public.clients c WHERE c.id = o.user_id) as clients,
-             (SELECT json_build_object('name_en', r.name_en, 'name_ru', r.name_ru) FROM public.restaurants r WHERE r.id = o.cafe_id) as restaurants
-      FROM public.orders o
-      ORDER BY o.created_at DESC
-      LIMIT 10
-    `);
+    const allOrders = await adminPb.collection('orders').getFullList({
+      sort: '-created'
+    });
 
-    // 3. Get top restaurants by orders
-    const topRestaurantsRes = await query(`
-      SELECT cafe_id, count(*) as count
-      FROM public.orders
-      WHERE status IN ('delivered', 'paid', 'accepted')
-      GROUP BY cafe_id
-    `);
+    const totalRevenue = allOrders
+      .filter(o => ['delivered', 'paid', 'accepted'].includes(o.status))
+      .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
 
-    const restaurantCounts = topRestaurantsRes.rows.reduce((acc: any, row: any) => {
-      acc[row.cafe_id] = parseInt(row.count);
-      return acc;
-    }, {});
+    const totalClients = await adminPb.collection('users').getList(1, 1);
+    
+    // 2. Get counts from Supabase (Public Data)
+    const { count: totalRestaurants } = await supabase
+      .from('restaurants')
+      .select('*', { count: 'exact', head: true });
+
+    // 3. Get recent orders with expanded data
+    const recentOrders = await adminPb.collection('orders').getList(1, 10, {
+      sort: '-created',
+      expand: 'user_id, cafe_id'
+    });
+
+    const formattedRecentOrders = recentOrders.items.map(order => ({
+      ...order,
+      clients: order.expand?.user_id || {},
+      restaurants: order.expand?.cafe_id || {}
+    }));
+
+    // 4. Calculate top restaurants locally since data is partitioned
+    const restaurantCounts: any = {};
+    allOrders.forEach(order => {
+      if (['delivered', 'paid', 'accepted'].includes(order.status)) {
+        restaurantCounts[order.cafe_id] = (restaurantCounts[order.cafe_id] || 0) + 1;
+      }
+    });
 
     const stats = {
-      totalOrders: parseInt(baseStats.total_orders) || 0,
-      activeOrders: parseInt(baseStats.active_orders) || 0,
-      totalRevenue: parseFloat(baseStats.total_revenue) || 0,
-      totalClients: parseInt(baseStats.total_clients) || 0,
-      totalStaff: parseInt(baseStats.total_staff) || 0,
-      totalRestaurants: parseInt(baseStats.total_restaurants) || 0,
-      todayOrders: parseInt(baseStats.today_orders) || 0,
-      recentOrders: recentOrdersRes.rows || [],
-      restaurantCounts: restaurantCounts || {},
+      totalOrders: allOrders.length,
+      activeOrders: activeOrders.totalItems,
+      totalRevenue: totalRevenue,
+      totalClients: totalClients.totalItems,
+      totalStaff: 0, // Migrated separately if needed
+      totalRestaurants: totalRestaurants || 0,
+      todayOrders: allOrders.filter(o => new Date(o.created).toDateString() === new Date().toDateString()).length,
+      recentOrders: formattedRecentOrders,
+      restaurantCounts: restaurantCounts,
     }
 
     return createAdminResponse({ stats })
   } catch (error: any) {
+    console.error('Stats API Error:', error);
     return createAdminError(error.message, 500)
   }
 }

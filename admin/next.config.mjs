@@ -33,6 +33,7 @@ const nextConfig = {
     }
   },
   output: 'standalone',
+  turbopack: {},
 }
 
 const finalConfig = withPWA(nextConfig);

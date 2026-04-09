@@ -32,6 +32,7 @@ const nextConfig = {
     },
     staticGenerationRetryCount: 1,
   },
+  turbopack: {},
 }
 
 const finalConfig = withPWA(nextConfig);

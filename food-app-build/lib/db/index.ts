@@ -1,6 +1,10 @@
 import 'server-only';
 import { Pool } from 'pg';
 
+if (!process.env.POSTGRES_URL) {
+  console.error('❌ CRITICAL: POSTGRES_URL is not defined in environment variables');
+}
+
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
   max: 20,

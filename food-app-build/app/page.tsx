@@ -83,8 +83,16 @@ export default async function HomePage() {
         </main>
       </div>
     )
-  } catch (error) {
-    console.error('Home Page Error:', error)
-    return <div>Error loading home page</div>
+  } catch (error: any) {
+    console.error('Home Page Error Details:', error)
+    return (
+      <div className="p-10 text-center">
+        <h1 className="text-xl font-bold text-red-600 mb-4">Error loading home page</h1>
+        <pre className="text-sm bg-gray-100 p-4 rounded overflow-auto max-w-full inline-block text-left">
+          {error.message || 'Unknown error'}
+        </pre>
+        <p className="mt-4 text-gray-500">Please verify your POSTGRES_URL environment variable.</p>
+      </div>
+    )
   }
 }

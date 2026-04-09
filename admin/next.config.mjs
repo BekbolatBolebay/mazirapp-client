@@ -21,7 +21,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  outputFileTracingRoot: __dirname,
   experimental: {
     serverActions: {
       allowedOrigins: [
@@ -30,9 +29,10 @@ const nextConfig = {
         'mazirapp.kz',
         'mazirapp.kz.'
       ]
-    }
+    },
+    staticGenerationRetryCount: 1,
+    turbopack: {},
   },
-  turbopack: {},
 }
 
 const finalConfig = withPWA(nextConfig);

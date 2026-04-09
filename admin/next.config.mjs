@@ -32,16 +32,10 @@ const nextConfig = {
       ]
     }
   },
-  // This silences the "Turbopack with Webpack config" error in Next.js 15/16
-  turbopack: {},
   output: 'standalone',
 }
 
 const finalConfig = withPWA(nextConfig);
 
-// Double ensure turbopack is disabled if configured via plugin
-if (finalConfig) {
-  finalConfig.turbopack = {};
-}
 
 export default finalConfig;

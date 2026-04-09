@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
 import jwt from 'jsonwebtoken'
+import { getPbAdmin } from '@/lib/pocketbase/client'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
+const JWT_SECRET = process.env.JWT_SECRET || 'mazir_super_secret_jwt_key_2026'
 
 export async function GET() {
   try {
@@ -21,16 +21,22 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const res = await query('SELECT id, email, name, phone, role, created_at FROM public.users WHERE id = $1', [userId])
+    const adminPb = await getPbAdmin()
+    const user = await adminPb.collection('users').getOne(userId);
     
-    if (res.rows.length === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    return NextResponse.json({ user: res.rows[0] })
+    return NextResponse.json({ 
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.full_name,
+        phone: user.phone,
+        role: user.role,
+        created_at: user.created
+      } 
+    })
   } catch (error: any) {
     console.error('Profile GET Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return NextResponse.json({ error: 'User not found or Session expired' }, { status: 404 })
   }
 }
 
@@ -53,27 +59,34 @@ export async function PUT(req: NextRequest) {
     const body = await req.json()
     const { full_name, phone, push_subscription } = body
 
-    let res;
+    const adminPb = await getPbAdmin()
+    
+    let updatedUser;
     if (push_subscription !== undefined) {
-      res = await query(
-        'UPDATE public.users SET push_subscription = $1, updated_at = NOW() WHERE id = $2 RETURNING id, email, name, phone, role, created_at, push_subscription',
-        [push_subscription, userId]
-      )
+      updatedUser = await adminPb.collection('users').update(userId, {
+        push_subscription: push_subscription
+      })
     } else {
       if (!full_name || !phone) {
         return NextResponse.json({ error: 'Name and phone are required' }, { status: 400 })
       }
-      res = await query(
-        'UPDATE public.users SET name = $1, phone = $2, updated_at = NOW() WHERE id = $3 RETURNING id, email, name, phone, role, created_at',
-        [full_name, phone, userId]
-      )
+      updatedUser = await adminPb.collection('users').update(userId, {
+        full_name: full_name,
+        phone: phone
+      })
     }
 
-    if (res.rows.length === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    return NextResponse.json({ success: true, user: res.rows[0] })
+    return NextResponse.json({ 
+      success: true, 
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.full_name,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+        created_at: updatedUser.created
+      } 
+    })
   } catch (error: any) {
     console.error('Profile PUT Error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

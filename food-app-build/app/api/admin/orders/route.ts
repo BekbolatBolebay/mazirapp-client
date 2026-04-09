@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { query } from '@/lib/db'
+import { getPbAdmin } from '@/lib/pocketbase/client'
 import { verifyAdmin, createAdminResponse, createAdminError } from '@/lib/auth/admin'
 
 // GET all orders
@@ -15,28 +15,27 @@ export async function GET(req: NextRequest) {
   const limit = searchParams.get('limit')
 
   try {
-    const sql = `
-      SELECT o.*, 
-             (SELECT json_build_object('full_name', u.full_name, 'phone', u.phone) 
-              FROM public.users u WHERE u.id = o.user_id) as users,
-             (SELECT json_build_object('name_en', r.name_en, 'name_ru', r.name_ru, 'phone', r.phone) 
-              FROM public.restaurants r WHERE r.id = o.cafe_id) as restaurants,
-             (SELECT json_agg(json_build_object(
-                'id', oi.id,
-                'quantity', oi.quantity,
-                'price', oi.price,
-                'menu_items', (SELECT json_build_object('name_en', mi.name_en, 'name_ru', mi.name_ru, 'image_url', mi.image_url) 
-                               FROM public.menu_items mi WHERE mi.id = oi.menu_item_id)
-              )) FROM public.order_items oi WHERE oi.order_id = o.id) as order_items
-      FROM public.orders o
-      WHERE ($1::text IS NULL OR o.status = $1)
-        AND ($2::uuid IS NULL OR o.cafe_id = $2)
-      ORDER BY o.created_at DESC
-      LIMIT $3
-    `;
+    const adminPb = await getPbAdmin()
     
-    const res = await query(sql, [status || null, restaurantId || null, limit ? parseInt(limit) : 50])
-    return createAdminResponse({ orders: res.rows })
+    let filter = '';
+    if (status) filter += `status = "${status}"`;
+    if (restaurantId) filter += (filter ? ' && ' : '') + `cafe_id = "${restaurantId}"`;
+
+    const records = await adminPb.collection('orders').getList(1, limit ? parseInt(limit) : 50, {
+      filter: filter,
+      sort: '-created',
+      expand: 'user_id, cafe_id, order_items(order_id)'
+    });
+
+    // Transform for frontend
+    const orders = records.items.map(order => ({
+      ...order,
+      users: order.expand?.user_id || {},
+      restaurants: order.expand?.cafe_id || {},
+      order_items: order.expand?.['order_items(order_id)'] || []
+    }));
+
+    return createAdminResponse({ orders })
   } catch (error: any) {
     return createAdminError(error.message, 500)
   }
@@ -57,10 +56,7 @@ export async function PUT(req: NextRequest) {
       return createAdminError('Order ID and status are required', 400)
     }
 
-    const validStatuses = ['pending', 'preparing', 'on_the_way', 'delivered', 'cancelled', 'paid', 'accepted']
-    if (!validStatuses.includes(status)) {
-      return createAdminError('Invalid status', 400)
-    }
+    const adminPb = await getPbAdmin()
 
     const updates: any = { status }
 
@@ -76,20 +72,9 @@ export async function PUT(req: NextRequest) {
       updates.estimated_delivery_time = estimated_delivery_time
     }
 
-    const keys = Object.keys(updates);
-    const values = keys.map(k => updates[k]);
-    const setClause = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const updatedOrder = await adminPb.collection('orders').update(id, updates)
 
-    const res = await query(
-      `UPDATE public.orders SET ${setClause} WHERE id = $1 RETURNING *`,
-      [id, ...values]
-    )
-
-    if (res.rowCount === 0) {
-      return createAdminError('Order not found', 404)
-    }
-
-    return createAdminResponse({ order: res.rows[0] })
+    return createAdminResponse({ order: updatedOrder })
   } catch (error: any) {
     return createAdminError(error.message, 500)
   }
@@ -110,16 +95,12 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    const res = await query(
-      "UPDATE public.orders SET status = 'cancelled' WHERE id = $1 RETURNING *",
-      [id]
-    )
+    const adminPb = await getPbAdmin()
+    const updatedOrder = await adminPb.collection('orders').update(id, {
+      status: 'cancelled'
+    })
 
-    if (res.rowCount === 0) {
-      return createAdminError('Order not found', 404)
-    }
-
-    return createAdminResponse({ order: res.rows[0], message: 'Order cancelled successfully' })
+    return createAdminResponse({ order: updatedOrder, message: 'Order cancelled successfully' })
   } catch (error: any) {
     return createAdminError(error.message, 500)
   }

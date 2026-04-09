@@ -1,10 +1,10 @@
 'use server'
 
 import nodemailer from 'nodemailer'
-import { query } from '@/lib/db'
 import { v4 as uuidv4 } from 'uuid'
 import { sign } from 'jsonwebtoken'
 import { cookies } from 'next/headers'
+import { pb, getPbAdmin } from '@/lib/pocketbase/client'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mazir_super_secret_jwt_key_2026'
 
@@ -13,11 +13,16 @@ export async function sendCustomOtp(email: string, fullName: string, phone: stri
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
     try {
-        // Save OTP to DB
-        await query(
-            'INSERT INTO otp_codes (id, email, code, full_name, phone, expires_at) VALUES ($1, $2, $3, $4, $5, $6)',
-            [uuidv4(), email, code, fullName, phone, expiresAt]
-        )
+        const adminPb = await getPbAdmin();
+        
+        // Save OTP to PocketBase
+        await adminPb.collection('otp_codes').create({
+            email,
+            code,
+            full_name: fullName,
+            phone,
+            expires_at: expiresAt.toISOString()
+        })
 
         // Send Email
         if (process.env.MOCK_MAIL === 'true') {
@@ -85,57 +90,69 @@ export async function sendCustomOtp(email: string, fullName: string, phone: stri
 }
 
 export async function verifyCustomOtp(email: string, code: string) {
-    // 1. Check OTP
-    const res = await query(
-        'SELECT * FROM otp_codes WHERE email = $1 AND code = $2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-        [email, code]
-    )
+    try {
+        const adminPb = await getPbAdmin();
 
-    if (res.rowCount === 0) {
-        throw new Error('Код қате немесе уақыты өтіп кеткен')
-    }
+        // 1. Check OTP in PocketBase
+        const records = await adminPb.collection('otp_codes').getList(1, 1, {
+            filter: `email = "${email}" && code = "${code}" && expires_at > "${new Date().toISOString()}"`,
+            sort: '-created'
+        });
 
-    const otpData = res.rows[0]
+        if (records.items.length === 0) {
+            throw new Error('Код қате немесе уақыты өтіп кеткен')
+        }
 
-    // 2. Find or create user
-    let userRes = await query('SELECT * FROM public.users WHERE email = $1', [email])
-    let user = userRes.rows[0]
+        const otpData = records.items[0]
 
-    if (!user) {
-        const newUserRes = await query(
-            'INSERT INTO public.users (id, email, full_name, phone, role) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [uuidv4(), email, otpData.full_name, otpData.phone, 'user']
+        // 2. Find or create user in PocketBase
+        let user;
+        try {
+            user = await adminPb.collection('users').getFirstListItem(`email = "${email}"`);
+        } catch (e) {
+            // User not found, create new
+            user = await adminPb.collection('users').create({
+                email,
+                full_name: otpData.full_name,
+                phone: otpData.phone,
+                role: 'user',
+                emailVisibility: true,
+                password: uuidv4(), // Random password for internal auth
+                passwordConfirm: uuidv4()
+            });
+        }
+
+        // 3. Create Session (JWT)
+        const token = sign(
+            { 
+                id: user.id, 
+                userId: user.id, 
+                email: user.email, 
+                role: user.role,
+                full_name: user.full_name,
+                phone: user.phone
+            }, 
+            JWT_SECRET, 
+            { expiresIn: '7d' }
         )
-        user = newUserRes.rows[0]
+
+        const cookieStore = await cookies()
+        cookieStore.set('mazir_auth_token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 7,
+            path: '/'
+        })
+
+        // 4. Delete used OTP
+        await adminPb.collection('otp_codes').delete(otpData.id)
+
+        return { success: true, user }
+    } catch (error: any) {
+        console.error('OTP Verification Error:', error)
+        throw new Error(error.message || 'Тексеру кезінде қате кетті')
     }
-
-    // 3. Create Session (JWT)
-    const token = sign(
-        { 
-            id: user.id, 
-            userId: user.id, 
-            email: user.email, 
-            role: user.role,
-            full_name: user.full_name,
-            phone: user.phone
-        }, 
-        JWT_SECRET, 
-        { expiresIn: '7d' }
-    )
-
-    const cookieStore = await cookies()
-    cookieStore.set('mazir_auth_token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7,
-        path: '/'
-    })
-
-    // 4. Delete used OTP
-    await query('DELETE FROM otp_codes WHERE id = $1', [otpData.id])
-
-    return { success: true, user }
 }
 
 export async function signOut() {

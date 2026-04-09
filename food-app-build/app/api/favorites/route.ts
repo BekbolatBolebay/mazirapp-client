@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -17,26 +17,29 @@ export async function GET(req: NextRequest) {
 
   try {
     if (type === 'restaurants') {
-      const res = await query(
-        `SELECT * FROM public.restaurants WHERE id = ANY($1::uuid[])`,
-        [ids]
-      )
-      return NextResponse.json({ items: res.rows })
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('*')
+        .in('id', ids);
+
+      if (error) throw error;
+      return NextResponse.json({ items: data })
     } else if (type === 'food') {
-      const res = await query(
-        `SELECT m.*, 
-                json_build_object('id', r.id, 'name_kk', r.name_kk, 'name_ru', r.name_ru, 'rating', r.rating) as restaurants
-         FROM public.menu_items m
-         JOIN public.restaurants r ON m.cafe_id = r.id
-         WHERE m.id = ANY($1::uuid[])`,
-        [ids]
-      )
-      return NextResponse.json({ items: res.rows })
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select(`
+          *,
+          restaurants:cafe_id (id, name_kk, name_ru, rating)
+        `)
+        .in('id', ids);
+
+      if (error) throw error;
+      return NextResponse.json({ items: data })
     }
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
   } catch (error: any) {
     console.error('Favorites GET Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch favorite items' }, { status: 500 })
   }
 }

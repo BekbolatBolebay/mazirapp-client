@@ -1,16 +1,26 @@
 import PocketBase from 'pocketbase';
 
-const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://pocketbase:8090');
+// Ортақ PocketBase URL-і
+const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'https://pb.mazirapp.kz';
 
 export const pb = new PocketBase(pbUrl);
 
-// Disable auto cancellation for concurrent requests in Next.js
+// Next.js-тегі бірнеше сұраныстардың тоқтап қалмауы үшін
 pb.autoCancellation(false);
 
+/**
+ * PocketBase-ке әкімші ретінде кіру (Сервер жағында деректерді өңдеу үшін қажет)
+ */
 export async function getPbAdmin() {
-    const adminEmail = process.env.POCKETBASE_ADMIN_EMAIL || 'admin@mazirapp.kz';
-    const adminPassword = process.env.POCKETBASE_ADMIN_PASSWORD || 'Admin123456!';
+    const adminEmail = process.env.POCKETBASE_ADMIN_EMAIL;
+    const adminPassword = process.env.POCKETBASE_ADMIN_PASSWORD;
     
-    await pb.admins.authWithPassword(adminEmail, adminPassword);
+    if (adminEmail && adminPassword) {
+        try {
+            await pb.admins.authWithPassword(adminEmail, adminPassword);
+        } catch (error) {
+            console.error('PocketBase Admin Auth Error:', error);
+        }
+    }
     return pb;
 }

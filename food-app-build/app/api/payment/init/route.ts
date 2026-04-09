@@ -1,96 +1,59 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { generateFreedomSignature } from '@/utils/payment-helpers'
-import { query } from '@/lib/db'
+import { getPbAdmin } from '@/lib/pocketbase/client'
 
 export async function POST(req: Request) {
     try {
-        const { orderId, reservationId, amount, description, customerEmail, customerPhone, cardId } = await req.json()
+        const { orderId, reservationId, amount, description, customerEmail, customerPhone } = await req.json()
 
         if ((!orderId && !reservationId) || !amount) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
         }
 
-        const cookieStore = await cookies();
-        const token = cookieStore.get('pb_auth')?.value || cookieStore.get('auth_token')?.value;
-
-        if (!token) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-
-        let restaurant: any = null
+        const adminPb = await getPbAdmin()
+        
         let record: any = null
+        let restaurant: any = null
         let finalId = orderId || reservationId
 
-        // 1. Get order/reservation and restaurant details via PostgreSQL
-        if (orderId) {
-            const orderRes = await query(
-                `SELECT o.*, r.freedom_merchant_id, r.freedom_payment_secret_key, r.freedom_test_mode, r.delivery_fee
-                 FROM public.orders o
-                 JOIN public.restaurants r ON o.cafe_id = r.id
-                 WHERE o.id = $1`,
-                [orderId]
-            )
-            const order = orderRes.rows[0]
-
-            if (!order) {
-                return NextResponse.json({ error: 'Order not found', orderId }, { status: 404 })
+        // 1. Тапсырысты немесе Брондауды PocketBase-тен алу (Sensitive Data)
+        try {
+            if (orderId) {
+                record = await adminPb.collection('orders').getOne(orderId, {
+                    expand: 'cafe_id'
+                });
+                restaurant = record.expand.cafe_id;
+            } else if (reservationId) {
+                record = await adminPb.collection('reservations').getOne(reservationId, {
+                    expand: 'cafe_id'
+                });
+                restaurant = record.expand.cafe_id;
             }
-            
-            record = order
-            restaurant = order
-            
-            // Get order items
-            const itemsRes = await query(
-                'SELECT * FROM public.order_items WHERE order_id = $1',
-                [orderId]
-            )
-            restaurant.items = itemsRes.rows
-        } else if (reservationId) {
-            const resRes = await query(
-                `SELECT rs.*, r.freedom_merchant_id, r.freedom_payment_secret_key, r.freedom_test_mode
-                 FROM public.reservations rs
-                 JOIN public.restaurants r ON rs.cafe_id = r.id
-                 WHERE rs.id = $1`,
-                [reservationId]
-            )
-            const res = resRes.rows[0]
-
-            if (!res) {
-                return NextResponse.json({ error: 'Reservation not found', reservationId }, { status: 404 })
-            }
-            
-            record = res
-            restaurant = res
-            
-            // Get reservation items (if any tables or items attached)
-            // Note: Schema might vary for reservation items, assuming reservation_items table
-            const itemsRes = await query(
-                'SELECT * FROM reservation_items WHERE reservation_id = $1',
-                [reservationId]
-            ).catch(() => ({ rows: [] }))
-            restaurant.items = itemsRes.rows
+        } catch (e) {
+            return NextResponse.json({ error: 'Order or Reservation not found' }, { status: 404 })
         }
 
         if (!restaurant) {
             return NextResponse.json({ error: 'Restaurant details not found' }, { status: 500 })
         }
 
-        const merchantId = restaurant.freedom_merchant_id || process.env.FREEDOM_MERCHANT_ID
-        const secretKey = restaurant.freedom_payment_secret_key || process.env.FREEDOM_PAYMENT_SECRET_KEY
+        // Әр мейрамхананың жеке кілттері (PocketBase-те сақталады)
+        const merchantId = restaurant.freedom_merchant_id;
+        const secretKey = restaurant.freedom_payment_secret_key;
 
-        // MOCK MODE: If credentials are missing, allow testing via a mock redirect
+        // MOCK MODE: Егер кілттер жоқ болса, тексеру режиміне жіберу
         if (!merchantId || !secretKey) {
-            console.warn('⚠️ Freedom Pay credentials missing. Redirecting to MOCK CARD.');
+            console.warn('⚠️ Freedom Pay credentials missing for this restaurant.');
             const mockCardUrl = `/checkout/mock-card?${orderId ? `orderId=${orderId}` : `reservationId=${reservationId}`}&amount=${amount}`;
             return NextResponse.json({
                 redirectUrl: mockCardUrl,
                 isMock: true,
-                message: 'Demo/Testing mode: Please configure Freedom Pay credentials.'
+                message: 'Demo mode: Please configure Freedom Pay keys in Admin panel.'
             })
         }
 
-        // 2. Prepare Freedom Pay parameters
+        // 2. Freedom Pay параметрлерін дайындау
         const params: any = {
             pg_merchant_id: merchantId,
             pg_amount: record.total_amount,
@@ -109,40 +72,45 @@ export async function POST(req: Request) {
                 : `${process.env.NEXT_PUBLIC_APP_URL}/reservations/${reservationId}?status=failure`,
         }
 
-        // Add User Data
-        // For self-hosted Postgres, we need to get user ID from session/token
-        // Assuming user ID is available in the token or we can decode it
-        // For now, using a placeholder or pg_user_id if available
-        // params.pg_user_id = ... 
-
-        // Add Fiscalization Data
-        if (restaurant.items && restaurant.items.length > 0) {
-            const receiptData = restaurant.items.map((item: any) => ({
-                name: item.name_ru || item.name_kk || 'Item',
-                count: item.quantity || 1,
-                price: item.price,
-                type: 'service',
-                vat_percent: 0,
-            }))
-
-            if (orderId && restaurant.delivery_fee > 0) {
-                receiptData.push({
-                    name: 'Доставка',
-                    count: 1,
-                    price: restaurant.delivery_fee,
-                    type: 'service',
-                    vat_percent: 0
-                })
-            }
-            params.pg_receipt_data = JSON.stringify(receiptData)
-        }
-
+        // Пайдаланушы мәліметтері
         if (customerEmail) params.pg_user_contact_email = customerEmail
         if (customerPhone) params.pg_user_phone = customerPhone
 
+        // Фискализация (чек) деректерін қосу
+        try {
+            const items = await adminPb.collection(orderId ? 'order_items' : 'reservation_items').getFullList({
+                filter: `${orderId ? 'order_id' : 'reservation_id'} = "${finalId}"`
+            });
+
+            if (items.length > 0) {
+                const receiptData = items.map((item: any) => ({
+                    name: item.name_ru || 'Item',
+                    count: item.quantity || 1,
+                    price: item.price,
+                    type: 'service',
+                    vat_percent: 0,
+                }))
+
+                if (orderId && record.delivery_fee > 0) {
+                    receiptData.push({
+                        name: 'Доставка',
+                        count: 1,
+                        price: record.delivery_fee,
+                        type: 'service',
+                        vat_percent: 0
+                    })
+                }
+                params.pg_receipt_data = JSON.stringify(receiptData)
+            }
+        } catch (e) {
+            console.error('Fiscalization data error:', e);
+        }
+
+        // Қол қою (Signature) - Мейрамхананың жеке Secret Key-імен
         const sig = generateFreedomSignature('init_payment.php', params, secretKey)
         params.pg_sig = sig
 
+        // Freedom Pay-ге сұраныс жіберу
         const formData = new URLSearchParams()
         for (const key in params) {
             formData.append(key, params[key])
@@ -165,12 +133,11 @@ export async function POST(req: Request) {
 
         if (redirectUrlMatch && redirectUrlMatch[1]) {
             const redirectUrl = redirectUrlMatch[1]
-            // Update payment URL in PostgreSQL
-            if (orderId) {
-                await query('UPDATE public.orders SET payment_url = $1 WHERE id = $2', [redirectUrl, orderId])
-            } else if (reservationId) {
-                await query('UPDATE public.reservations SET payment_url = $1 WHERE id = $2', [redirectUrl, reservationId])
-            }
+            // Тапсырысқа төлем сілтемесін жаңарту
+            await adminPb.collection(orderId ? 'orders' : 'reservations').update(finalId, {
+                payment_url: redirectUrl
+            });
+            
             return NextResponse.json({ redirectUrl })
         } else {
             const errorDescriptionMatch = resultText.match(/<pg_error_description>(.*?)<\/pg_error_description>/)

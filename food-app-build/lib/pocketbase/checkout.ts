@@ -1,125 +1,192 @@
-import { query } from '@/lib/db';
-import { pb } from './client';
+import { pb, getPbAdmin } from './client';
+import { supabase } from '@/lib/supabase';
 
+/** 
+ * Мейрамхана мәліметтерін Supabase-тен алу (Public Data)
+ */
 export async function getRestaurantSettings(id: string) {
     try {
-        const res = await query('SELECT * FROM public.restaurants WHERE id = $1', [id]);
-        return res.rows[0] || null;
+        const { data, error } = await supabase
+            .from('restaurants')
+            .select('*')
+            .eq('id', id)
+            .single();
+        
+        if (error) throw error;
+        return data;
     } catch (error) {
-        console.error('Error fetching restaurant settings from SQL:', error);
+        console.error('Error fetching restaurant settings from Supabase:', error);
         return null;
     }
 }
 
+/** 
+ * Жұмыс уақытын Supabase-тен алу
+ */
 export async function getWorkingHours(cafeId: string) {
     try {
-        const res = await query('SELECT * FROM public.working_hours WHERE cafe_id = $1', [cafeId]);
-        return res.rows;
+        const { data, error } = await supabase
+            .from('working_hours')
+            .select('*')
+            .eq('cafe_id', cafeId);
+        
+        if (error) throw error;
+        return data;
     } catch (error) {
-        console.error('Error fetching working hours from SQL:', error);
+        console.error('Error fetching working hours from Supabase:', error);
         return [];
     }
 }
 
+/** 
+ * Пайдаланушының карталарын PocketBase-тен алу (Sensitive Data)
+ */
 export async function getUserCards(userId: string) {
     try {
-        const res = await query('SELECT * FROM user_cards WHERE user_id = $1 AND is_active = true ORDER BY created_at DESC', [userId]);
-        return res.rows;
+        const adminPb = await getPbAdmin();
+        const records = await adminPb.collection('user_cards').getFullList({
+            filter: `user_id = "${userId}" && is_active = true`,
+            sort: '-created'
+        });
+        return records;
     } catch (error) {
-        console.error('Error fetching user cards from SQL:', error);
+        console.error('Error fetching user cards from PocketBase:', error);
         return [];
     }
 }
 
+/** 
+ * Үстелдерді Supabase-тен алу
+ */
 export async function getTables(cafeId: string) {
     try {
-        const res = await query('SELECT * FROM public.restaurant_tables WHERE cafe_id = $1 AND is_active = true', [cafeId]);
-        return res.rows;
+        const { data, error } = await supabase
+            .from('restaurant_tables')
+            .select('*')
+            .eq('cafe_id', cafeId)
+            .eq('is_active', true);
+        
+        if (error) throw error;
+        return data;
     } catch (error) {
-        console.error('Error fetching tables from SQL:', error);
+        console.error('Error fetching tables from Supabase:', error);
         return [];
     }
 }
 
+/** 
+ * Мәзір мен санаттарды Supabase-тен алу (Үлкен деректер үшін тиімді)
+ */
 export async function getCheckoutMenu(cafeId: string) {
     try {
-        const categoriesRes = await query(
-            'SELECT * FROM public.categories WHERE cafe_id = $1 AND is_active = true ORDER BY sort_order',
-            [cafeId]
-        );
-        const itemsRes = await query(
-            'SELECT * FROM public.menu_items WHERE cafe_id = $1 AND is_available = true ORDER BY sort_order',
-            [cafeId]
-        );
-        return { categories: categoriesRes.rows, items: itemsRes.rows };
+        const { data: categories, error: catError } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('cafe_id', cafeId)
+            .eq('is_active', true)
+            .order('sort_order');
+
+        const { data: items, error: itemError } = await supabase
+            .from('menu_items')
+            .select('*')
+            .eq('cafe_id', cafeId)
+            .eq('is_available', true)
+            .order('sort_order');
+
+        if (catError || itemError) throw catError || itemError;
+        
+        return { categories: categories || [], items: items || [] };
     } catch (error) {
-        console.error('Error fetching checkout menu from SQL:', error);
+        console.error('Error fetching checkout menu from Supabase:', error);
         return { categories: [], items: [] };
     }
 }
 
+/** 
+ * Барлық брондауларды PocketBase-тен алу
+ */
 export async function getAllReservations(cafeId: string) {
     try {
-        const res = await query(
-            'SELECT id, table_number as table_id, date, time, status FROM public.reservations WHERE cafe_id = $1',
-            [cafeId]
-        );
-        return res.rows;
+        const adminPb = await getPbAdmin();
+        const records = await adminPb.collection('reservations').getFullList({
+            filter: `cafe_id = "${cafeId}"`,
+            sort: '-created'
+        });
+        return records;
     } catch (error) {
-        console.error('Error fetching all reservations from SQL:', error);
+        console.error('Error fetching all reservations from PocketBase:', error);
         return [];
     }
 }
 
+/** 
+ * Брондау жасау - PocketBase-те сақталады (Жеке деректер мен уақыт)
+ */
 export async function createReservation(data: any, items: any[]) {
     try {
-        const res = await query(
-            `INSERT INTO public.reservations (user_id, cafe_id, date, time, guests, status, booking_fee, payment_status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [data.user_id, data.cafe_id, data.date, data.time, data.guests, data.status || 'pending', data.booking_fee || 0, data.payment_status || 'pending']
-        );
+        const adminPb = await getPbAdmin();
+        const reservation = await adminPb.collection('reservations').create({
+            ...data,
+            status: data.status || 'pending',
+            payment_status: data.payment_status || 'pending'
+        });
         
-        const reservation = res.rows[0];
-        
-        // Create items if reservation_items table exists
+        // Брондау тағамдарын сақтау
         for (const item of items) {
-             await query(
-                'INSERT INTO reservation_items (reservation_id, menu_item_id, quantity, price) VALUES ($1, $2, $3, $4)',
-                [reservation.id, item.menu_item_id, item.quantity, item.price]
-            );
+             await adminPb.collection('reservation_items').create({
+                reservation_id: reservation.id,
+                menu_item_id: item.menu_item_id,
+                quantity: item.quantity,
+                price: item.price
+            });
         }
         
         return reservation;
     } catch (error) {
-        console.error('Error creating reservation in SQL:', error);
+        console.error('Error creating reservation in PocketBase:', error);
         throw error;
     }
 }
 
+/** 
+ * Тапсырыс жасау - PocketBase-те сақталады (Мекенжай, телефон және төлем)
+ */
 export async function createOrder(data: any, items: any[]) {
     try {
-        const res = await query(
-            `INSERT INTO public.orders (user_id, cafe_id, status, total_amount, delivery_fee, address, phone, payment_method, payment_status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [data.user_id, data.cafe_id, data.status || 'pending', data.total_amount, data.delivery_fee || 0, data.address, data.phone, data.payment_method, data.payment_status || 'pending']
-        );
+        const adminPb = await getPbAdmin();
+        const order = await adminPb.collection('orders').create({
+            user_id: data.user_id,
+            cafe_id: data.cafe_id,
+            status: data.status || 'pending',
+            total_amount: data.total_amount,
+            delivery_fee: data.delivery_fee || 0,
+            address: data.address, // Жеке дерек - PocketBase-те қауіпсіз
+            phone: data.phone,     // Жеке дерек - PocketBase-те қауіпсіз
+            payment_method: data.payment_method,
+            payment_status: data.payment_status || 'pending'
+        });
         
-        const order = res.rows[0];
-        
+        // Тапсырыс тағамдары
         for (const item of items) {
-            await query(
-                'INSERT INTO public.order_items (order_id, menu_item_id, name_ru, quantity, price) VALUES ($1, $2, $3, $4, $5)',
-                [order.id, item.id || item.menu_item_id, item.name_ru || item.name, item.quantity, item.price]
-            );
+            await adminPb.collection('order_items').create({
+                order_id: order.id,
+                menu_item_id: item.id || item.menu_item_id,
+                name_ru: item.name_ru || item.name,
+                quantity: item.quantity,
+                price: item.price
+            });
         }
         
         return order;
     } catch (error) {
-        console.error('Error creating order in SQL:', error);
+        console.error('Error creating order in PocketBase:', error);
         throw error;
     }
 }
 
+/** 
+ * PocketBase-тегі жаңартуларға жазылу (Real-time)
+ */
 export async function subscribeToRestaurantSettings(id: string, callback: (data: any) => void) {
     try {
         const unsubscribe = await pb.collection('restaurants').subscribe(id, (e) => {
@@ -127,7 +194,7 @@ export async function subscribeToRestaurantSettings(id: string, callback: (data:
         });
         return unsubscribe;
     } catch (error) {
-        console.error('Error subscribing to restaurant settings in PocketBase:', error);
+        console.error('Error subscribing in PocketBase:', error);
         return () => {};
     }
 }

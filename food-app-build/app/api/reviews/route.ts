@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,22 +17,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const res = await query(
-      `INSERT INTO public.reviews (cafe_id, customer_name, rating, comment, order_id, reservation_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *`,
-      [
+    const { data, error } = await supabase
+      .from('reviews')
+      .insert({
         cafe_id,
-        customer_name || 'Anonymous',
+        customer_name: customer_name || 'Anonymous',
         rating,
-        comment || '',
-        order_id || null,
-        reservation_id || null
-      ]
-    )
+        comment: comment || '',
+        order_id: order_id || null,
+        reservation_id: reservation_id || null
+      })
+      .select()
+      .single();
 
-    return NextResponse.json({ review: res.rows[0] }, { status: 201 })
+    if (error) throw error;
+
+    return NextResponse.json({ review: data }, { status: 201 })
   } catch (error: any) {
     console.error('Review Submission Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to submit review' }, { status: 500 })
   }
 }

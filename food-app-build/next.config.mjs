@@ -16,7 +16,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  output: 'standalone',
   async redirects() {
     return [
       {

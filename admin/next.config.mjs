@@ -32,7 +32,6 @@ const nextConfig = {
       ]
     }
   },
-  output: 'standalone',
   turbopack: {},
 }
 

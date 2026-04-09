@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import withPWAInit from '@ducanh2912/next-pwa';
 
 const withPWA = withPWAInit({

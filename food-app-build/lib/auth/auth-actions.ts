@@ -54,9 +54,9 @@ export async function sendCustomOtp(email: string, fullName: string, phone: stri
         })
 
         await transporter.sendMail({
-            from: process.env.SMTP_FROM || `Mazir App <${smtpUser}>`,
+            from: `Mazir <${smtpUser}>`,
             to: email,
-            subject: `Mazir App: Растау коды - ${code}`,
+            subject: `Mazir: Растау коды ${code}`,
             html: `
         <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 40px auto; padding: 40px; border-radius: 24px; background-color: #ffffff; border: 1px solid #eef2f6; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
           <div style="text-align: center; margin-bottom: 32px;">
